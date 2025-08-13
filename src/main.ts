@@ -40,7 +40,7 @@ async function bootstrap() {
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'];
+    methods: ['GET', 'POST', 'PATCH', 'DELETE']
   });
 
   await app.listen(process.env.PORT || 3001, '0.0.0.0');
