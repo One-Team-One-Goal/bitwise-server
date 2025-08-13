@@ -7,8 +7,14 @@ export class AuthService {
   private supabase: SupabaseClient;
 
   constructor(private configService: ConfigService) {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL')!;
-    const supabaseServiceKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    const supabaseServiceKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error(
+        'Missing Supabase configuration. Please check your .env file for SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'
+      );
+    }
 
     this.supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {

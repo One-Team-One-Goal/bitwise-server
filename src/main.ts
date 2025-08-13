@@ -12,8 +12,7 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   )
-  await app.listen(process.env.PORT ?? 3000);
-  
+    
   const config = new DocumentBuilder()
     .setTitle('Bitwise Server V2')
     .setDescription('Bitwise Server API documentation for MARS BENITEZ')
@@ -43,7 +42,7 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PATCH', 'DELETE']
   });
 
-  await app.listen(process.env.PORT || 3001, '0.0.0.0');
+  await app.listen(process.env.PORT || 3000, '0.0.0.0');
 }
 
 bootstrap();
