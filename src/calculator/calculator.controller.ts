@@ -25,8 +25,6 @@ export class CalculatorController {
           HttpStatus.BAD_REQUEST,
         );
       }
-
-      this.logger.log(`Simplifying: ${simplifyDto.expression}`);
       
       const result = await this.calculatorService.simplifyExpression(simplifyDto.expression);
 
@@ -39,7 +37,6 @@ export class CalculatorController {
 
       return result;
     } catch (error) {
-      this.logger.error('Error in simplify endpoint:', error);
       
       if (error instanceof HttpException) {
         throw error;

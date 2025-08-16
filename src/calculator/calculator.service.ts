@@ -1216,7 +1216,6 @@ export class CalculatorService {
       `;
 
       runInContext(jsCode, this.jsContext);
-      this.logger.log('JavaScript context initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize JavaScript context:', error);
       throw new Error('Calculator initialization failed');
