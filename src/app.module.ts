@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { BookmarkModule } from './bookmark/bookmark.module';
+import { CalculatorModule } from './calculator/calculator.module';
 
 @Module({
   imports: [
@@ -12,7 +13,8 @@ import { BookmarkModule } from './bookmark/bookmark.module';
     }),
     AuthModule, 
     UserModule, 
-    BookmarkModule
+    BookmarkModule,
+    CalculatorModule,
   ],
 })
 export class AppModule {}
