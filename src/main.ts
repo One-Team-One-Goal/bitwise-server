@@ -21,10 +21,11 @@ async function bootstrap() {
     .build();
 
   const documentFactory = () => SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('bitwise-api', app, documentFactory);
+  SwaggerModule.setup('bitwise-api', app, documentFactory, {yamlDocumentUrl: "/bitwise-api/bitwise-api.yaml"});
+
 
   app.setGlobalPrefix('api');
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.enableCors({
     origin: (origin, callback) => {
       const allowedOrigins = [
