@@ -1,60 +1,62 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { ApiTags, ApiBody } from '@nestjs/swagger';
 import { AssessmentService } from './assessment.service';
-import { CreateAssessmentDto } from './dto/create-assessment.dto';
-import { UpdateAssessmentDto } from './dto/update-assessment.dto';
-import { LessonsService } from 'src/lessons/lessons.service';
 
+@ApiTags('assessment')
 @Controller('assessment')
 export class AssessmentController {
-  constructor(private readonly assessmentService: AssessmentService,
-              private readonly lessonsService: LessonsService
-  ) {}
+  constructor(private readonly assessmentService: AssessmentService) {}
 
-  @Post()
-  create(@Body() createAssessmentDto: CreateAssessmentDto) {
-    return this.assessmentService.create(createAssessmentDto);
+  @Post('generate-practice')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        uid: { type: 'number', example: 1 }
+      },
+      required: ['uid']
+    }
+  })
+  async generatePracticeAssessment() {
+    return await this.assessmentService.generatePracticeAssessment();
   }
 
-  @Get()
-  findAll() {
-    return this.assessmentService.findAll();
+  @Post('start-practice')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      uid: { type: 'number', example: 1 }
+    },
+    required: ['uid']
+  }
+})
+async startPractice(@Body('uid') uid: string) {
+  return await this.assessmentService.startPracticeAttempt(uid);
+}
+
+@Post('submit-practice')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      attemptId: { type: 'number', example: 1 },
+      responses: { type: 'object', example: { "0": "opt_a", "1": "opt_b" } }
+    },
+    required: ['attemptId', 'responses']
+  }
+})
+async submitPractice(@Body() body: { attemptId: number, responses: any }) {
+  return await this.assessmentService.savePracticeAttempt(body.attemptId, body.responses);
+}
+
+  @Get('attempts/:userId')
+  async getUserAttempts(@Param('userId') userId: string) {
+    return await this.assessmentService.getUserAttempts(userId);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.assessmentService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAssessmentDto: UpdateAssessmentDto) {
-    return this.assessmentService.update(+id, updateAssessmentDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.assessmentService.remove(+id);
-  }
-
-  @Post('generate-quiz')
-  async generateQuiz(@Body() body: { topic?: string }) {
-    const lessonContent = "Boolean algebra is a branch of mathematics that deals with variables that have two possible values: true or false. The basic operations are AND, OR, and NOT.";
-    const topic = body?.topic ?? "Boolean Algebra";
-    const difficulty = "EASY";
-    const allowedTags = [
-      "intro",                 
-      "boolean-values",        
-      "applications",         
-      "and-gate", "or-gate", "not-gate",         
-      "nand-gate", "nor-gate",                   
-      "xor-gate", "xnor-gate",                
-      "truth-table-construction",              
-      "truth-table-reading",               
-      "identity-law","null-law","idempotent-law",
-      "inverse-law","commutative-law","associative-law",
-      "distributive-law","absorption-law","demorgan-law", 
-      "kmap-2var","kmap-3var","kmap-4var",
-      "simplification-practice"
-    ];
-    return await this.assessmentService.generateQuiz(lessonContent, difficulty, allowedTags);
+  @Get('attempt/:attemptId')
+  async getAttempt(@Param('attemptId') attemptId: string) {
+    return await this.assessmentService.getAttemptById(Number(attemptId));
   }
 }

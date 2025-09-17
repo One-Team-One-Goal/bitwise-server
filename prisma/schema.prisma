@@ -33,3 +33,14 @@ model Topic {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
+
+model Attempt {
+  id         Int      @id @default(autoincrement())
+  userId     String
+  questions  Json     // Store the generated questions for this attempt
+  responses  Json?    // Store the user's answers (optional until submitted)
+  score      Int?     // Store the score (optional until submitted)
+  feedback   String?  // Adaptive feedback (optional until submitted)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
