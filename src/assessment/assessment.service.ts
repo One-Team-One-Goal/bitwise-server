@@ -155,7 +155,7 @@ Return a JSON array of 20 questions, valid JSON only, no extra text.
     const quiz = await this.generatePracticeAssessment();
 
     // Save attempt with questions
-    const attempt = await this.prisma.attempt.create({
+    const attempt = await (this.prisma as any).attempt.create({
       data: {
         userId,
         questions: quiz.questions,
@@ -173,7 +173,7 @@ Return a JSON array of 20 questions, valid JSON only, no extra text.
    */
   async savePracticeAttempt(attemptId: number, responses: any) {
     // Get the attempt and questions
-    const attempt = await this.prisma.attempt.findUnique({ where: { id: attemptId } });
+    const attempt = await (this.prisma as any).attempt.findUnique({ where: { id: attemptId } });
     if (!attempt) throw new Error('Attempt not found');
 
     const questions = attempt.questions as any[];
@@ -210,7 +210,7 @@ Return a JSON array of 20 questions, valid JSON only, no extra text.
     }
 
     // Save responses, score, and feedback
-    await this.prisma.attempt.update({
+    await (this.prisma as any).attempt.update({
       where: { id: attemptId },
       data: {
         responses,
@@ -226,14 +226,14 @@ Return a JSON array of 20 questions, valid JSON only, no extra text.
    * Optionally, get a user's attempts (history)
    */
   async getUserAttempts(userId: string) {
-    return this.prisma.attempt.findMany({
+    return (this.prisma as any).attempt.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async getAttemptById(attemptId: number) {
-    return this.prisma.attempt.findUnique({
+    return (this.prisma as any).attempt.findUnique({
       where: { id: attemptId },
     });
   }
