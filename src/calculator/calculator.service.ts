@@ -1161,6 +1161,68 @@ export class CalculatorService {
           }
         };
 
+        // AST-based uid annotation and tokenizer for UI
+        function hashString(str) {
+          var h = 5381;
+          for (var i = 0; i < str.length; i++) {
+            h = ((h << 5) + h) + str.charCodeAt(i);
+            h = h & h; // keep in 32bit
+          }
+          return (h >>> 0).toString(36);
+        }
+
+        this.annotateNodeUids = function(node) {
+          // assign deterministic uid based on subtree string
+          function walk(n) {
+            if (!n) return;
+            var key = n.toString();
+            n._uid = n._uid || (n.constructor.name + '_' + hashString(key));
+            if (n.subs && n.subs.length) {
+              for (var i = 0; i < n.subs.length; i++) {
+                walk(n.subs[i]);
+              }
+            } else if (n instanceof NotExpression && n.subs && n.subs[0]) {
+              walk(n.subs[0]);
+            }
+          }
+          walk(node);
+          return node;
+        };
+
+        this.tokenizeASTForUI = function(node) {
+          var tokens = [];
+          var parenCounter = 0;
+          function emit(text, kind, id) {
+            tokens.push({ id: id || (text + '_' + tokens.length), text: text, kind: kind });
+          }
+
+          function walk(n) {
+            if (n == null) return;
+            if (n instanceof Variable) {
+              emit(n.toString(), 'var', n._uid);
+            } else if (n instanceof NotExpression) {
+              // unary operator token
+              emit(SYMBOL.NOT, 'op', n._uid + '_not');
+              walk(n.subs[0]);
+            } else if (n instanceof AndExpression || n instanceof OrExpression) {
+              // parentheses
+              emit('(', 'paren', n._uid + '_lp' + (parenCounter++));
+              for (var i = 0; i < n.subs.length; i++) {
+                walk(n.subs[i]);
+                if (i < n.subs.length - 1) {
+                  emit(n instanceof AndExpression ? SYMBOL.AND : SYMBOL.OR, 'op', n._uid + '_op_' + i);
+                }
+              }
+              emit(')', 'paren', n._uid + '_rp' + (parenCounter++));
+            } else {
+              // fallback: emit string
+              emit(n.toString(), 'other', n._uid || ('node_' + hashString(n.toString())));
+            }
+          }
+
+          walk(node);
+          return tokens;
+        };
         // Export main functions
         this.parseExpression = function(expr) {
           VariableManager.clear();
@@ -1171,19 +1233,22 @@ export class CalculatorService {
           VariableManager.clear();
           var parsed = Parser.parse(expr);
           var steps = Equivalency.simplify(parsed);
+          // Return previous shape but also allow frontend to request AST tokenization via annotate/tokenize helpers
           return {
             originalExpression: expr,
             simplifiedExpression: steps[steps.length - 1].result,
             steps: steps
-              .filter(s => s.lawString !== 'result')
-              .map(step => ({
-                expression: step.result,
-                law: step.lawString,
-                lawName: step.lawString.replace('by ', '')
-              }))
-            ,stepLines: steps
-              .filter(function(s){ return s.lawString !== 'result'; })
-              .map(function(step){ return step.result + step.lawString; })
+              .filter(function(s) { return s.lawString !== 'result'; })
+              .map(function(step) {
+                return {
+                  expression: step.result,
+                  law: step.lawString,
+                  lawName: step.lawString.replace('by ', '')
+                };
+              }),
+            stepLines: steps
+              .filter(function(s) { return s.lawString !== 'result'; })
+              .map(function(step) { return step.result + step.lawString; })
           };
         };
 
@@ -1230,26 +1295,136 @@ export class CalculatorService {
   async simplifyExpression(expression: string): Promise<CalculationResponse> {
     try {
       const sanitizedExpression = this.sanitizeExpression(expression);
-      
-      const result = runInContext(
+      // call the JS simplifier (embedded in the vm context)
+      const result: any = runInContext(
         `this.simplifyExpression("${sanitizedExpression}")`,
         this.jsContext,
       );
 
+      // Build linear list of expressions: original + each step expression
+      const exprList: string[] = [];
+      exprList.push(result.originalExpression);
+      (result.steps || []).forEach((s: any) => exprList.push(s.expression));
+
+      // Tokenize each expression via the injected AST-based helpers in the VM
+      const tokenizedList: Array<Array<{ text: string; kind: string; id?: string }>> = exprList.map((expr) => {
+        try {
+          const code = `(function(){ var p = this.parseExpression(${JSON.stringify(expr)}); this.annotateNodeUids(p); return this.tokenizeASTForUI(p); })()`;
+          return runInContext(code, this.jsContext) as any;
+        } catch (e) {
+          // fallback naive tokenizer
+          const fallback = (expr.match(/[A-Za-z]+'+|[A-Za-z]+|[∧∨⊕→↔¬()]/g) || []).map(m => ({ text: m, kind: (/^[A-Za-z]/.test(m) ? 'var' : (/^[() ]$/.test(m) ? 'paren' : 'op')) }));
+          return fallback;
+        }
+      });
+
+      // Create a stable id registry from the original expression tokens (use AST ids when available)
+      const registry: Record<string, string[]> = {};
+      const usedIndex: Record<string, number> = {};
+      function sanitizeId(text: string) {
+        return text.replace(/[^a-zA-Z0-9]/g, (c) => '_' + c.charCodeAt(0).toString(16));
+      }
+      // assign ids for original tokens
+      tokenizedList[0].forEach((t: any, i: number) => {
+        const key = t.id || t.text;
+        const id = t.id || `tok_${sanitizeId(t.text)}_${i}`;
+        registry[key] = registry[key] || [];
+        registry[key].push(id);
+      });
+
+      let newCounter = 0;
+      // helper to get next id for a token text or AST uid
+      function nextIdFor(text: string) {
+        usedIndex[text] = usedIndex[text] || 0;
+        if (registry[text] && usedIndex[text] < registry[text].length) {
+          return registry[text][usedIndex[text]++];
+        }
+        const id = `new_${sanitizeId(text)}_${newCounter++}`;
+        registry[text] = registry[text] || [];
+        registry[text].push(id);
+        usedIndex[text]++;
+        return id;
+      }
+
+      // build script steps: for each simplification step produce before/after states
+      const steps: any[] = [];
+      const jsSteps = result.steps || [];
+      for (let i = 0; i < jsSteps.length; i++) {
+        const beforeTokensRaw = tokenizedList[i] || [];
+        const afterTokensRaw = tokenizedList[i + 1] || [];
+
+        // build keys for before/after (use provided id if available, else text_index)
+        const beforeKeys: string[] = beforeTokensRaw.map((t: any, idx: number) => t.id || `${t.text}_${idx}`);
+        const afterKeys: string[] = afterTokensRaw.map((t: any, idx: number) => t.id || `${t.text}_${idx}`);
+
+        // reset usedIndex each step so reuse favors earliest available ids in order
+        Object.keys(usedIndex).forEach(k => usedIndex[k] = 0);
+
+        // create mapped tokens with stable ids
+        const beforeTokens = beforeTokensRaw.map((t: any, idx: number) => {
+          const key = t.id || `${t.text}_${idx}`;
+          const id = nextIdFor(key);
+          return { id, text: t.text, kind: t.kind, highlight: false };
+        });
+
+        const afterTokens = afterTokensRaw.map((t: any, idx: number) => {
+          const key = t.id || `${t.text}_${idx}`;
+          const id = nextIdFor(key);
+          const isNew = !beforeKeys.includes(key);
+          return { id, text: t.text, kind: t.kind, isNew, highlight: false };
+        });
+
+        // compute highlight tokens: tokens that were added or removed in this step
+        const beforeSet = new Set(beforeKeys);
+        const afterSet = new Set(afterKeys);
+        const added = new Set<string>(afterKeys.filter(k => !beforeSet.has(k)));
+        const removed = new Set<string>(beforeKeys.filter(k => !afterSet.has(k)));
+        const changedKeys = new Set<string>([...added, ...removed]);
+
+        // mark highlights on before and after token arrays by matching their original keys
+        const markIdFromKey = (key: string) => {
+          // return the assigned id from registry (first occurrence)
+          const arr = registry[key];
+          return arr && arr.length ? arr[0] : undefined;
+        }
+
+        const changedIds = new Set<string>();
+        changedKeys.forEach(k => {
+          const mapped = registry[k];
+          if (mapped && mapped.length) mapped.forEach((mid: string) => changedIds.add(mid));
+        });
+
+        // Apply highlight flag
+        beforeTokens.forEach(bt => {
+          bt.highlight = changedIds.has(bt.id);
+        });
+        afterTokens.forEach(at => {
+          at.highlight = changedIds.has(at.id) || at.isNew;
+        });
+
+        steps.push({
+          id: String(i + 1),
+          law: (jsSteps[i].lawName || jsSteps[i].law || '').toLowerCase(),
+          description: jsSteps[i].law || jsSteps[i].lawName || undefined,
+          before: { raw: exprList[i], tokens: beforeTokens },
+          after: { raw: exprList[i + 1], tokens: afterTokens },
+        });
+      }
+
+      const script = {
+        defaultExpression: result.originalExpression,
+        steps: steps,
+      };
+
       return {
         success: true,
-        result: {
-          originalExpression: result.originalExpression,
-          simplifiedExpression: result.simplifiedExpression,
-          steps: result.steps,
-          stepLines: result.stepLines,
-        },
+        result: script,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
         result: null,
-        error: error.message || 'Failed to simplify expression',
+        error: error?.message || 'Failed to simplify expression',
       };
     }
   }
