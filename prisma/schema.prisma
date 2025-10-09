@@ -32,7 +32,24 @@ model Topic {
   tags           String[]
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  userSkills     UserSkill[]
 }
+
+model UserSkill {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  topicId   Int      // link skill to a specific topic/lesson
+  level     Float    @default(0.5) // Knowledge level (0.0 to 1.0)
+  mastery   Float    @default(0.5) // Skill proficiency (0.0 to 1.0) 
+  attempts  Int      @default(0)   // Number of attempts on this topic
+  correct   Int      @default(0)   // Number of correct answers
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  topic     Topic    @relation(fields: [topicId], references: [id])
+  @@unique([userId, topicId])
+}
+
 
 model Attempt {
   id         Int      @id @default(autoincrement())
@@ -41,6 +58,7 @@ model Attempt {
   responses  Json?    // Store the user's answers (optional until submitted)
   score      Int?     // Store the score (optional until submitted)
   feedback   String?  // Adaptive feedback (optional until submitted)
+  performance Json?   // Store detailed performance per topic/skill
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
