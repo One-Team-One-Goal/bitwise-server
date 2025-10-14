@@ -1,46 +1,57 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
 model Lesson {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   topics    Topic[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
 }
 
 model Topic {
-  id             Int       @id @default(autoincrement())
+  id             Int         @id @default(autoincrement())
   title          String
-  lesson         Lesson    @relation(fields: [lessonId], references: [id])
   lessonId       Int
-  contentText    String
-  displayContent Json?     // Changed from String to Json to store structured blocks
   tags           String[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  contentText    String
+  displayContent Json?
+  lesson         Lesson      @relation(fields: [lessonId], references: [id])
+  UserSkill      UserSkill[]
 }
 
 model Attempt {
-  id         Int      @id @default(autoincrement())
-  userId     String
-  questions  Json     // Store the generated questions for this attempt
-  responses  Json?    // Store the user's answers (optional until submitted)
-  score      Int?     // Store the score (optional until submitted)
-  feedback   String?  // Adaptive feedback (optional until submitted)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  userId      String
+  responses   Json?
+  score       Int?
+  feedback    String?
+  createdAt   DateTime @default(now())
+  questions   Json
+  updatedAt   DateTime @updatedAt
+  performance Json?
+}
+
+model UserSkill {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  topicId   Int
+  level     Float    @default(0.5)
+  mastery   Float    @default(0.5)
+  attempts  Int      @default(0)
+  correct   Int      @default(0)
+  updatedAt DateTime
+  createdAt DateTime @default(now())
+  Topic     Topic    @relation(fields: [topicId], references: [id])
+
+  @@unique([userId, topicId])
 }

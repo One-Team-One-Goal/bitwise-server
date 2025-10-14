@@ -28,15 +28,20 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.enableCors({
     origin: (origin, callback) => {
-      const allowedOrigins = [
-        process.env.FRONTEND_URL,
-        process.env.LOCALHOST_URL,
-      ];
-
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Allow all localhost origins in development
+      if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
         callback(null, true);
       } else {
-        callback(new Error('Cors not allowed for this origin'), false);
+        const allowedOrigins = [
+          process.env.FRONTEND_URL,
+          process.env.LOCALHOST_URL,
+        ];
+        
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Cors not allowed for this origin'), false);
+        }
       }
     },
     credentials: true,
