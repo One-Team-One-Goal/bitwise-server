@@ -18,6 +18,34 @@ export interface SimplificationResult {
   isValid: boolean;
 }
 
+// Token/script types for UI animation
+export interface ScriptToken {
+  id: string;
+  text: string;
+  kind: 'var' | 'op' | 'paren' | 'other';
+  // optional UI flags
+  isNew?: boolean;
+  highlight?: boolean;
+}
+
+export interface ScriptExpressionState {
+  raw: string;
+  tokens: ScriptToken[];
+}
+
+export interface ScriptStep {
+  id: string;
+  law?: string;
+  description?: string;
+  before: ScriptExpressionState;
+  after: ScriptExpressionState;
+}
+
+export interface FactoringDirectionScript {
+  defaultExpression: string;
+  steps: ScriptStep[];
+}
+
 export interface CalculationRequest {
   expression: string;
   operation: 'simplify' | 'evaluate' | 'truthTable';
@@ -26,6 +54,7 @@ export interface CalculationRequest {
 
 export interface CalculationResponse {
   success: boolean;
-  result: SimplificationResult | boolean | any;
+  // result may be the legacy simplification result, a boolean (evaluation), or a tokenized script
+  result: SimplificationResult | FactoringDirectionScript | boolean | any;
   error?: string;
 }

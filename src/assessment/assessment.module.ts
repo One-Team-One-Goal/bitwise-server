@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { AssessmentService } from './assessment.service';
 import { AssessmentController } from './assessment.controller';
-import { LessonsModule } from 'src/lessons/lessons.module';
-import { AuthModule } from 'src/auth/auth.module';
+import { AssessmentService } from './assessment.service';
+import { AdaptiveModule } from '../adaptive/adaptive.module';
+import { PrismaService } from 'prisma/prisma.service';
 
 @Module({
-  imports: [LessonsModule, AuthModule],
+  imports: [AdaptiveModule],
   controllers: [AssessmentController],
-  providers: [AssessmentService],
+  providers: [AssessmentService, PrismaService],
+  exports: [AssessmentService]
 })
 export class AssessmentModule {}
