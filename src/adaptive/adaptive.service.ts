@@ -158,7 +158,7 @@ export class AdaptiveService {
           }
         }
       }
-    });
+    }) as Promise<UserSkillWithTopic[]>;
   }
 
   /**
