@@ -32,18 +32,17 @@ model Topic {
 model UserSkill {
   id        Int      @id @default(autoincrement())
   userId    String
-  topicId   Int      // link skill to a specific topic/lesson
-  level     Float    @default(0.5) // Knowledge level (0.0 to 1.0)
-  mastery   Float    @default(0.5) // Skill proficiency (0.0 to 1.0) 
-  attempts  Int      @default(0)   // Number of attempts on this topic
-  correct   Int      @default(0)   // Number of correct answers
+  topicId   Int
+  level     Float    @default(0.5)
+  mastery   Float    @default(0.5)
+  attempts  Int      @default(0)
+  correct   Int      @default(0)
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
-
   topic     Topic    @relation(fields: [topicId], references: [id])
+
   @@unique([userId, topicId])
 }
-
 
 model Attempt {
   id          Int      @id @default(autoincrement())
@@ -55,19 +54,4 @@ model Attempt {
   questions   Json
   updatedAt   DateTime @updatedAt
   performance Json?
-}
-
-model UserSkill {
-  id        Int      @id @default(autoincrement())
-  userId    String
-  topicId   Int
-  level     Float    @default(0.5)
-  mastery   Float    @default(0.5)
-  attempts  Int      @default(0)
-  correct   Int      @default(0)
-  updatedAt DateTime
-  createdAt DateTime @default(now())
-  Topic     Topic    @relation(fields: [topicId], references: [id])
-
-  @@unique([userId, topicId])
 }
