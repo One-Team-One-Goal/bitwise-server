@@ -21,7 +21,6 @@ export class CalculatorService {
         require: require,
       });
 
-  // Original boolean calculator implementation from GitHub
       const jsCode = `
         // Constants from constants.js
         const SYMBOL = {
