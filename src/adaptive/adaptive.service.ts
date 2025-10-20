@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 
 interface BKTParameters {
   pLearn: number;    // Probability of learning
@@ -16,15 +15,33 @@ interface PerformanceData {
   difficulty: string;
 }
 
-type UserSkillWithTopic = Prisma.UserSkillGetPayload<{
-  include: {
-    topic: {
-      include: {
-        lesson: true
-      }
-    }
-  }
-}>
+export interface UserSkillWithTopic {
+  id: number;
+  userId: string;
+  topicId: number;
+  level: number;
+  mastery: number;
+  attempts: number;
+  correct: number;
+  updatedAt: Date;
+  createdAt: Date;
+  topic: {
+    id: number;
+    title: string;
+    lessonId: number;
+    tags: string[];
+    createdAt: Date;
+    updatedAt: Date;
+    contentText: string;
+    displayContent: any;
+    lesson: {
+      id: number;
+      title: string;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+  };
+}
 
 @Injectable()
 export class AdaptiveService {
