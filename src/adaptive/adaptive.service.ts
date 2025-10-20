@@ -157,8 +157,8 @@ export class AdaptiveService {
             lesson: true
           }
         }
-      }
-    }) as Promise<UserSkillWithTopic[]>;
+      } as any
+    }) as unknown as Promise<UserSkillWithTopic[]>;
   }
 
   /**
