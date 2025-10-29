@@ -385,12 +385,27 @@ For 4-variable K-maps:
   "circuit": {
     "inputs": ["A", "B", "C"],
     "gates": [
-      {"type": "AND", "inputs": ["A", "B"], "output": "X"},
-      {"type": "NOT", "inputs": ["C"], "output": "Y"},
-      {"type": "OR", "inputs": ["X", "Y"], "output": "Z"}
+      {
+        "id": "G1",
+        "type": "AND",
+        "inputs": ["A", "B"],
+        "output": "X"
+      },
+      {
+        "id": "G2",
+        "type": "NOT",
+        "inputs": ["C"],
+        "output": "Y"
+      },
+      {
+        "id": "G3",
+        "type": "OR",
+        "inputs": ["X", "Y"],
+        "output": "Z"
+      }
     ],
     "finalOutput": "Z",
-    "caption": "Analyze the circuit configuration shown above"
+    "caption": "Analyze the circuit configuration shown above."
   }
 }
 
