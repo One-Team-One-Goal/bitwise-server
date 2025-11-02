@@ -1,5 +1,5 @@
 import { Controller, Get, Param } from '@nestjs/common';
-import { AdaptiveService } from './adaptive.service';
+import { AdaptiveService, UserSkillWithTopic } from './adaptive.service';
 
 @Controller('adaptive')
 export class AdaptiveController {

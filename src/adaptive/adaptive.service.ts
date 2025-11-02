@@ -15,6 +15,34 @@ interface PerformanceData {
   difficulty: string;
 }
 
+export interface UserSkillWithTopic {
+  id: number;
+  userId: string;
+  topicId: number;
+  level: number;
+  mastery: number;
+  attempts: number;
+  correct: number;
+  updatedAt: Date;
+  createdAt: Date;
+  topic: {
+    id: number;
+    title: string;
+    lessonId: number;
+    tags: string[];
+    createdAt: Date;
+    updatedAt: Date;
+    contentText: string;
+    displayContent: any;
+    lesson: {
+      id: number;
+      title: string;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+  };
+}
+
 @Injectable()
 export class AdaptiveService {
   constructor(private prisma: PrismaService) {}
@@ -47,6 +75,7 @@ export class AdaptiveService {
           mastery: 0.0,      // Start lower - user hasn't demonstrated mastery
           attempts: 0,
           correct: 0,
+          updatedAt: new Date(),
         })),
         skipDuplicates: true
       });
@@ -117,7 +146,7 @@ export class AdaptiveService {
   /**
  * Get user's current skill levels
  */
-  async getUserSkills(userId: string) {
+  async getUserSkills(userId: string): Promise<UserSkillWithTopic[]> {
     await this.initializeUserSkills(userId);
     
     return this.prisma.userSkill.findMany({
@@ -128,8 +157,8 @@ export class AdaptiveService {
             lesson: true
           }
         }
-      }
-    });
+      } as any
+    }) as unknown as Promise<UserSkillWithTopic[]>;
   }
 
   /**
