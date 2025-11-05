@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Param, UseGuards } from '@nestjs/common';
 import { UserProgressService } from './user-progress.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { GetUser } from '../auth/decorators/get-user.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('progress')
 @UseGuards(JwtAuthGuard)
@@ -10,7 +10,7 @@ export class UserProgressController {
 
   @Post('topic/:topicId/viewed')
   async markTopicViewed(
-    @GetUser('id') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('topicId') topicId: string
   ) {
     return this.userProgressService.markTopicViewed(userId, parseInt(topicId));
@@ -18,7 +18,7 @@ export class UserProgressController {
 
   @Post('topic/:topicId/completed')
   async markTopicCompleted(
-    @GetUser('id') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('topicId') topicId: string
   ) {
     return this.userProgressService.markTopicCompleted(userId, parseInt(topicId));
@@ -26,27 +26,27 @@ export class UserProgressController {
 
   @Get('lesson/:lessonId')
   async getLessonProgress(
-    @GetUser('id') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('lessonId') lessonId: string
   ) {
     return this.userProgressService.getUserLessonProgress(userId, parseInt(lessonId));
   }
 
   @Get('all')
-  async getAllProgress(@GetUser('id') userId: string) {
+  async getAllProgress(@CurrentUser('id') userId: string) {
     return this.userProgressService.getAllUserProgress(userId);
   }
 
   @Get('topics/lesson/:lessonId')
   async getTopicsForLesson(
-    @GetUser('id') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('lessonId') lessonId: string
   ) {
     return this.userProgressService.getUserTopicsForLesson(userId, parseInt(lessonId));
   }
 
   @Get('statistics')
-  async getStatistics(@GetUser('id') userId: string) {
+  async getStatistics(@CurrentUser('id') userId: string) {
     return this.userProgressService.getUserStatistics(userId);
   }
 }
