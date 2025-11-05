@@ -8,6 +8,7 @@ import { LessonsModule } from './lessons/lessons.module';
 import { AssessmentModule } from './assessment/assessment.module';
 import { PrismaModule } from 'prisma/prisma.module';
 import { AdaptiveModule } from './adaptive/adaptive.module';
+import { UserProgressModule } from './user-progress/user-progress.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AdaptiveModule } from './adaptive/adaptive.module';
     AssessmentModule,
     PrismaModule,
     AdaptiveModule,
+    UserProgressModule,
   ],
 })
 export class AppModule {}

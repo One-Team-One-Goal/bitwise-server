@@ -3,6 +3,7 @@ import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
 import { PrismaService } from 'prisma/prisma.service';
 import { AdaptiveService } from '../adaptive/adaptive.service';
+import { buildAdaptiveQuizPrompt } from './prompts/adaptive-quiz-generation';
 
 @Injectable()
 export class AssessmentService {
@@ -51,10 +52,24 @@ export class AssessmentService {
       }
     }
 
+    if (!jsonString) {
+      console.error('No JSON array found in AI response:', text.substring(0, 500));
+      throw new Error('AI response did not contain a valid JSON array');
+    }
+
     try {
-      return JSON.parse(jsonString);
+      const parsed = JSON.parse(jsonString);
+      
+      // Ensure the parsed result is an array
+      if (!Array.isArray(parsed)) {
+        console.error('Parsed JSON is not an array:', typeof parsed);
+        throw new Error('AI response parsed to non-array format');
+      }
+      
+      return parsed;
     } catch (err) {
-      return { raw: text, error: "Could not parse response as JSON.", details: err.message };
+      console.error('JSON parse error:', err.message, '\nJSON string:', jsonString.substring(0, 500));
+      throw new Error(`Failed to parse AI response as JSON: ${err.message}`);
     }
   }
 
@@ -234,415 +249,193 @@ private getTagRecommendation(tag: string): string | null {
 
 
 
-  /**
+    /**
    * Generate adaptive practice assessment based on user's skill level
    */
   async generateAdaptivePracticeAssessment(userId: string) {
-  // Get adaptive recommendations
-  const recommendations = await this.adaptiveService.getAdaptiveRecommendations(userId);
-  
-  // Get all lessons and their topics
-  const lessons = await this.prisma.lesson.findMany({
-    include: { topics: true }
-  });
+    // Get adaptive recommendations
+    const recommendations = await this.adaptiveService.getAdaptiveRecommendations(userId);
+    
+    // Get all lessons and their topics
+    const lessons = await this.prisma.lesson.findMany({
+      include: { topics: true }
+    });
 
-  if (!lessons || lessons.length < 4) throw new Error('Not enough lessons found');
+    if (!lessons || lessons.length < 4) throw new Error('Not enough lessons found');
 
-  // Adjust question distribution based on user's weak areas
-  const focusTopicIds = recommendations.focusTopics.map(t => t.topicId);
-  
-  let lesson1Topics = lessons.find(l => l.id === 1)?.topics ?? [];
-  let lesson2Topics = lessons.find(l => l.id === 2)?.topics ?? [];
-  let lesson3Topics = lessons.find(l => l.id === 3)?.topics ?? [];
-  let lesson4Topics = lessons.find(l => l.id === 4)?.topics ?? [];
+    // Adjust question distribution based on user's weak areas
+    const focusTopicIds = recommendations.focusTopics.map(t => t.topicId);
+    
+    let lesson1Topics = lessons.find(l => l.id === 1)?.topics ?? [];
+    let lesson2Topics = lessons.find(l => l.id === 2)?.topics ?? [];
+    let lesson3Topics = lessons.find(l => l.id === 3)?.topics ?? [];
+    let lesson4Topics = lessons.find(l => l.id === 4)?.topics ?? [];
 
-  // Prioritize focus topics - move them to the front of their respective lesson arrays
-  if (focusTopicIds.length > 0) {
-    lesson1Topics = lesson1Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-      lesson1Topics.filter(t => !focusTopicIds.includes(t.id))
-    );
-    lesson2Topics = lesson2Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-      lesson2Topics.filter(t => !focusTopicIds.includes(t.id))
-    );
-    lesson3Topics = lesson3Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-      lesson3Topics.filter(t => !focusTopicIds.includes(t.id))
-    );
-    lesson4Topics = lesson4Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-      lesson4Topics.filter(t => !focusTopicIds.includes(t.id))
-    );
-  }
-
-  // Select topics for adaptive question distribution
-  const topicSelections = [
-    ...lesson1Topics.slice(0, 2),
-    ...lesson2Topics.slice(0, 6),
-    ...lesson3Topics.slice(0, 6),
-    ...lesson4Topics.slice(0, 6),
-  ].filter(Boolean);
-
-  // Generate questions with adaptive difficulty
-  const promptParts = topicSelections.map((topic, idx) => `
-    Topic ${idx + 1}:
-    Title: ${topic.title}
-    Content: ${topic.contentText}
-  `);
-
-  const prompt = `
-You are an advanced adaptive learning assistant. Generate a 20-item multiple-choice quiz with ${recommendations.recommendedDifficulty} difficulty level focused EXCLUSIVELY on PROBLEM-SOLVING and APPLICATION of knowledge.
-
-CURRENT USER CONTEXT:
-- User mastery level: ${(recommendations.overallMastery * 100).toFixed(1)}%
-- Recommended difficulty: ${recommendations.recommendedDifficulty}
-- Focus areas: ${recommendations.focusTopics.map(t => t.topicTitle).join(', ')}
-
-QUESTION DISTRIBUTION REQUIREMENTS:
-- 2 questions from Lesson 1 topics (application-based only)
-- 6 questions each from Lessons 2, 3, and 4 topics (MUST be problem-solving/application)
-
-MANDATORY QUESTION APPROACH:
-❌ NEVER ask: "What is...", "Define...", "Which law states...", "What does... mean..."
-✅ ALWAYS ask: "Calculate...", "Determine...", "Simplify...", "Design...", "Analyze...", "Solve..."
-
-PRIORITIZED QUESTION TYPES:
-1. Circuit analysis with given input values
-2. Truth table completion or interpretation
-3. Boolean expression simplification problems
-4. Karnaugh map minimization
-5. Logic gate identification from behavior
-6. Circuit design challenges
-7. Real-world application scenarios requiring logical reasoning
-
-VISUAL ELEMENT FORMATTING (USE IN "stem" FIELD)
-
-1. TRUTH TABLES - Format:
-{
-  "type": "table",
-  "table": {
-    "rows": [
-      ["0", "0", "1"],
-      ["0", "1", "1"],
-      ["1", "0", "1"],
-      ["1", "1", "0"]
-    ],
-    "caption": "Complete the analysis for the following logic behavior",
-    "headers": ["Input A", "Input B", "Output Y"]
-  }
-}
-
-CRITICAL TRUTH TABLE RULES:
-- NEVER reveal the gate type in the caption (e.g., don't say "NAND Gate Truth Table")
-- Use neutral captions: "Analyze the logic function below", "Given the following logic behavior", "Complete this logic table"
-- The question should ask students to IDENTIFY or ANALYZE, not just recall
-- Example good question: "Based on the truth table below, what is the simplified Boolean expression for Output Y?"
-
-2. KARNAUGH MAPS - Format:
-{
-  "type": "karnaughMap",
-  "karnaughMap": {
-    "rows": [
-      ["1", "0"],
-      ["1", "1"]
-    ],
-    "caption": "Use this map to find the minimized expression",
-    "headers": ["B=0", "B=1"],
-    "sideLabels": ["A=0", "A=1"]
-  }
-}
-
-For 3-variable K-maps:
-{
-  "type": "karnaughMap",
-  "karnaughMap": {
-    "rows": [
-      ["1", "0", "0", "1"],
-      ["1", "1", "0", "0"]
-    ],
-    "caption": "Minimize the Boolean function using the K-map below",
-    "headers": ["BC=00", "BC=01", "BC=11", "BC=10"],
-    "sideLabels": ["A=0", "A=1"]
-  }
-}
-
-For 4-variable K-maps:
-{
-  "type": "karnaughMap",
-  "karnaughMap": {
-    "rows": [
-      ["1", "0", "0", "1"],
-      ["0", "1", "1", "0"],
-      ["1", "1", "0", "0"],
-      ["0", "0", "1", "1"]
-    ],
-    "caption": "Apply grouping rules to minimize this 4-variable function",
-    "headers": ["CD=00", "CD=01", "CD=11", "CD=10"],
-    "sideLabels": ["AB=00", "AB=01", "AB=11", "AB=10"]
-  }
-}
-
-3. CIRCUIT DIAGRAMS - Format:
-{
-  "type": "circuit",
-  "circuit": {
-    "inputs": ["A", "B", "C"],
-    "gates": [
-      {
-        "id": "G1",
-        "type": "AND",
-        "inputs": ["A", "B"],
-        "output": "X"
-      },
-      {
-        "id": "G2",
-        "type": "NOT",
-        "inputs": ["C"],
-        "output": "Y"
-      },
-      {
-        "id": "G3",
-        "type": "OR",
-        "inputs": ["X", "Y"],
-        "output": "Z"
-      }
-    ],
-    "finalOutput": "Z",
-    "caption": "Analyze the circuit configuration shown above."
-  }
-}
-
-CIRCUIT REPRESENTATION DETAILS:
-- "inputs": Array of input variable names
-- "gates": Array of gate objects in sequence
-  - "type": Gate type (AND, OR, NOT, NAND, NOR, XOR, XNOR)
-  - "inputs": Input signals to this gate (can be original inputs or outputs from previous gates)
-  - "output": Label for this gate's output signal
-- "finalOutput": The final output signal of the entire circuit
-- Use neutral captions that don't reveal the solution
-
-ANSWER OPTIONS REQUIREMENTS
-
-CRITICAL RULES:
-1. Exactly 3-4 options per question (prefer 4 for problem-solving questions)
-2. ONLY ONE CORRECT ANSWER - verify this rigorously
-3. RANDOMIZE the position of the correct answer (don't always put it in position A or D)
-4. Each option must be DISTINCTLY different - no duplicate logic or equivalent answers
-5. Distractors must represent common student errors or misconceptions
-6. All options should be plausible at first glance
-
-VERIFICATION CHECKLIST FOR EACH QUESTION:
-- [ ] Are all 4 options completely different from each other?
-- [ ] Is there truly only ONE indisputably correct answer?
-- [ ] Could any two options be considered equivalent or both correct?
-- [ ] Is the correct answer in a random position (not always A or D)?
-- [ ] Do distractors represent actual problem-solving errors?
-
-EXAMPLE OF BAD OPTIONS (DON'T DO THIS):
-❌ A. A·B + C
-❌ B. AB + C  [Same as A - just different notation]
-❌ C. (A AND B) OR C  [Same as A - just different format]
-❌ D. C + A·B  [Same as A - commutative property makes this equivalent]
-
-EXAMPLE OF GOOD OPTIONS:
-✅ A. A·B + C
-✅ B. A + B·C
-✅ C. A·(B + C)
-✅ D. (A + B)·(A + C)
-
-REQUIRED JSON FORMAT
-
-Each question MUST follow this exact structure:
-{
-  "lessonId": 1,
-  "topicId": 1,
-  "difficulty": "${recommendations.recommendedDifficulty}",
-  "stem": "Problem statement OR object with visual element (table/karnaughMap/circuit)",
-  "questionType": "multiple-choice",
-  "tags": ["relevant-tags-from-allowed-list"],
-  "options": [
-    {
-      "id": "opt_a",
-      "text": "First option",
-      "isCorrect": false,
-      "explanation": "Why this is incorrect and what mistake it represents"
-    },
-    {
-      "id": "opt_b",
-      "text": "Second option",
-      "isCorrect": true,
-      "explanation": "Why this is the correct answer with brief justification"
-    },
-    {
-      "id": "opt_c",
-      "text": "Third option",
-      "isCorrect": false,
-      "explanation": "Why this is incorrect and what mistake it represents"
-    },
-    {
-      "id": "opt_d",
-      "text": "Fourth option",
-      "isCorrect": false,
-      "explanation": "Why this is incorrect and what mistake it represents"
+    // Prioritize focus topics - move them to the front of their respective lesson arrays
+    if (focusTopicIds.length > 0) {
+      lesson1Topics = lesson1Topics.filter(t => focusTopicIds.includes(t.id)).concat(
+        lesson1Topics.filter(t => !focusTopicIds.includes(t.id))
+      );
+      lesson2Topics = lesson2Topics.filter(t => focusTopicIds.includes(t.id)).concat(
+        lesson2Topics.filter(t => !focusTopicIds.includes(t.id))
+      );
+      lesson3Topics = lesson3Topics.filter(t => focusTopicIds.includes(t.id)).concat(
+        lesson3Topics.filter(t => !focusTopicIds.includes(t.id))
+      );
+      lesson4Topics = lesson4Topics.filter(t => focusTopicIds.includes(t.id)).concat(
+        lesson4Topics.filter(t => !focusTopicIds.includes(t.id))
+      );
     }
-  ],
-  "answerId": "opt_b",
-  "solutionSteps": [
-    "Step 1: Identify what is being asked and what information is given",
-    "Step 2: Apply relevant principles/laws/methods",
-    "Step 3: Perform calculations or logical operations",
-    "Step 4: Verify the result and state the conclusion"
-  ],
-  "sourcePassages": ["Reference to relevant learning material"]
-}
 
-PROBLEM-SOLVING QUESTION TEMPLATES
+    // Select topics for adaptive question distribution
+    const topicSelections = [
+      ...lesson1Topics.slice(0, 2),
+      ...lesson2Topics.slice(0, 6),
+      ...lesson3Topics.slice(0, 6),
+      ...lesson4Topics.slice(0, 6),
+    ].filter(Boolean);
 
-EASY DIFFICULTY:
-- "Given the circuit above with inputs A=1, B=0, what is the output?"
-- "Simplify the expression: A·A + B"
-- "Complete the missing output values in the truth table"
-- "What is the result of applying De Morgan's law to (A+B)'?"
+    // Generate questions with adaptive difficulty
+    const promptParts = topicSelections.map((topic, idx) => `
+      Topic ${idx + 1}:
+      Title: ${topic.title}
+      Content: ${topic.contentText}
+    `);
 
-MEDIUM DIFFICULTY:
-- "Determine the minimized SOP expression from the K-map shown"
-- "For the circuit with three gates above, find the Boolean expression"
-- "Simplify using Boolean algebra: (A+B)·(A+C)·(B+C)"
-- "Design a circuit that produces output 1 when exactly two of three inputs are 1"
+    const prompt = buildAdaptiveQuizPrompt({
+      userMasteryPercent: parseFloat((recommendations.overallMastery * 100).toFixed(1)),
+      recommendedDifficulty: recommendations.recommendedDifficulty,
+      focusTopics: recommendations.focusTopics.map(t => t.topicTitle),
+      topicContents: promptParts
+    });
 
-HARD DIFFICULTY:
-- "Using the 4-variable K-map, find the minimized expression with don't-care conditions"
-- "Analyze the multi-level circuit and determine the output for all input combinations where A=1"
-- "Optimize the Boolean function F(A,B,C,D) = Σm(1,3,4,6,9,11,12,14) + d(0,5,15)"
-- "Convert the given circuit to use only NAND gates while maintaining functionality"
+    // Read model and sampling controls from env with safe defaults
+    const modelName = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+    const temp = process.env.LLM_TEMPERATURE ? Number(process.env.LLM_TEMPERATURE) : 0.3;
+    const topP = process.env.LLM_TOP_P ? Number(process.env.LLM_TOP_P) : 0.9;
 
-ALLOWED TAGS ONLY:
-["intro","boolean-values","applications","and-gate","or-gate","not-gate","nand-gate","nor-gate","xor-gate","xnor-gate","truth-table-construction","truth-table-reading","truth-table-for-gates","identity-law","null-law","idempotent-law","inverse-law","commutative-law","absorption-law","distributive-law","simplification","karnaugh-maps"]
-
-DIFFICULTY-SPECIFIC GUIDELINES
-
-EASY (Foundation):
-- 2-input gates and simple combinations
-- Basic truth tables (2-3 variables)
-- Single-step Boolean simplifications
-- Direct circuit output calculation
-- One or two logic gates maximum
-
-MEDIUM (Application):
-- 3-input gate combinations
-- Multi-step Boolean simplifications
-- 2-3 variable K-maps
-- Circuits with 3-5 gates
-- Pattern recognition in truth tables
-
-HARD (Advanced Problem-Solving):
-- Complex multi-gate circuits
-- 4-variable K-maps with grouping optimization
-- Multi-step algebraic simplifications
-- Circuit design problems with constraints
-- Don't-care condition handling
-- Gate conversion problems
-
-LEARNING CONTENT TO USE
-
-${promptParts.join('\n\n')}
-
-
-FINAL INSTRUCTIONS
-
-1. Generate EXACTLY 20 questions
-2. Each question MUST require problem-solving, not memorization
-3. Verify each question has ONLY ONE correct answer
-4. Randomize correct answer positions across all questions
-5. Use visual elements (tables, K-maps, circuits) for at least 50% of questions
-6. Never reveal answers in captions or question stems
-7. Make distractors represent realistic student errors
-8. Ensure all options are genuinely distinct
-
-OUTPUT: Return ONLY a valid JSON array. No markdown formatting, no explanations, no additional text - just the raw JSON array of 20 question objects.
-`;
-
+    // Helper to call the model and parse JSON with minimal retry for robustness
+    const requestQuestions = async () => {
       const { text } = await generateText({
-        model: groq("llama-3.1-8b-instant"),
+        model: groq(modelName),
         prompt,
-        temperature: 0.7, // Add some creativity while maintaining consistency
+        temperature: isNaN(temp) ? 0.3 : temp,
+        topP: isNaN(topP) ? 0.9 : topP,
       });
+      return this.extractJsonArray(text);
+    };
 
-      const questions = await this.extractJsonArray(text);
+    let questions = await requestQuestions();
 
-      // Enhanced validation and filtering
-      const filteredQuestions = (questions || []).map((q: any, index: number) => {
-        // Ensure exactly one correct answer
-        const correctOptions = q.options?.filter((opt: any) => opt.isCorrect) || [];
-        if (correctOptions.length !== 1) {
-          console.warn(`Question ${index + 1} has ${correctOptions.length} correct answers, should have exactly 1`);
-          // Fix by ensuring only the first correct option is marked as correct
-          q.options?.forEach((opt: any, idx: number) => {
-            opt.isCorrect = idx === 0 && correctOptions.length === 0 ? true : 
-                          opt.isCorrect && correctOptions.indexOf(opt) === 0;
-          });
-        }
-
-        // Ensure 3-4 options
-        if (q.options?.length < 3) {
-          console.warn(`Question ${index + 1} has only ${q.options?.length} options, minimum is 3`);
-        }
-
-        // Set answer ID to correct option
-        const correctOption = q.options?.find((opt: any) => opt.isCorrect);
-        if (correctOption) {
-          q.answerId = correctOption.id;
-        }
-
-        return {
-          ...q,
-          difficulty: recommendations.recommendedDifficulty,
-          tags: (q.tags || []).filter((tag: string) => this.allowedTags.includes(tag)),
-          // Ensure required fields
-          questionType: q.questionType || 'multiple-choice',
-          solutionSteps: q.solutionSteps || ['Analyze the problem', 'Apply relevant concepts', 'Verify the answer'],
-          sourcePassages: q.sourcePassages || ['Reference topic content']
-        };
+    // Ensure questions is always an array
+    if (!Array.isArray(questions)) {
+      console.error('AI generated non-array response:', questions);
+      // Retry once with slightly lower temperature for consistency
+      const retryTemp = Math.max(0.1, (isNaN(temp) ? 0.3 : temp) - 0.1);
+      const { text: retryText } = await generateText({
+        model: groq(modelName),
+        prompt,
+        temperature: retryTemp,
+        topP: isNaN(topP) ? 0.9 : topP,
       });
+      questions = await this.extractJsonArray(retryText);
+      if (!Array.isArray(questions)) {
+        throw new Error('Failed to generate valid questions array from AI response (after retry)');
+      }
+    }
 
-      // Additional validation
-      const validQuestions = filteredQuestions.filter((q: any) => {
-        return q.stem && 
-              q.options && 
-              q.options.length >= 3 && 
-              q.options.length <= 4 &&
-              q.options.filter((opt: any) => opt.isCorrect).length === 1;
-      });
-
-      if (validQuestions.length < 15) {
-        console.warn(`Only ${validQuestions.length} valid questions generated, expected 20`);
+    // Enhanced validation and filtering
+    const filteredQuestions = (questions || []).map((q: any, index: number) => {
+      // Ensure exactly one correct answer
+      const correctOptions = q.options?.filter((opt: any) => opt.isCorrect) || [];
+      if (correctOptions.length !== 1) {
+        console.warn(`Question ${index + 1} has ${correctOptions.length} correct answers, should have exactly 1`);
+        // Fix by ensuring only the first correct option is marked as correct
+        q.options?.forEach((opt: any, idx: number) => {
+          opt.isCorrect = idx === 0 && correctOptions.length === 0 ? true : 
+                        opt.isCorrect && correctOptions.indexOf(opt) === 0;
+        });
       }
 
-      return { 
-        questions: validQuestions.slice(0, 20), // Ensure we don't exceed 20 questions
-        adaptiveInfo: recommendations
+      // Ensure 3-4 options
+      if (q.options?.length < 3) {
+        console.warn(`Question ${index + 1} has only ${q.options?.length} options, minimum is 3`);
+      }
+
+      // Set answer ID to correct option
+      const correctOption = q.options?.find((opt: any) => opt.isCorrect);
+      if (correctOption) {
+        q.answerId = correctOption.id;
+      }
+
+      return {
+        ...q,
+        difficulty: recommendations.recommendedDifficulty,
+        tags: (q.tags || []).filter((tag: string) => this.allowedTags.includes(tag)),
+        // Ensure required fields
+        questionType: q.questionType || 'multiple-choice',
+        solutionSteps: q.solutionSteps || ['Analyze the problem', 'Apply relevant concepts', 'Verify the answer']
+        // Removed sourcePassages - not needed and causes buggy display
       };
+    });
+
+    // Additional validation
+    const validQuestions = filteredQuestions.filter((q: any) => {
+      return q.stem && 
+            q.options && 
+            q.options.length >= 3 && 
+            q.options.length <= 4 &&
+            q.options.filter((opt: any) => opt.isCorrect).length === 1;
+    });
+
+    if (validQuestions.length < 15) {
+      console.warn(`Only ${validQuestions.length} valid questions generated, expected 20`);
     }
+
+    return { 
+      questions: validQuestions.slice(0, 20), // Ensure we don't exceed 20 questions
+      adaptiveInfo: recommendations
+    };
+  }
 
 
   /**
    * Enhanced practice attempt with adaptive features
    */
   async startAdaptivePracticeAttempt(userId: string) {
-    // Generate adaptive questions
-    const quiz = await this.generateAdaptivePracticeAssessment(userId);
+    try {
+      // Generate adaptive questions
+      const quiz = await this.generateAdaptivePracticeAssessment(userId);
 
-    // Save attempt with questions and adaptive info
-    const attempt = await this.prisma.attempt.create({
-      data: {
-        userId,
+      // Ensure questions is an array before saving
+      if (!Array.isArray(quiz.questions)) {
+        console.error('Generated quiz questions is not an array:', quiz.questions);
+        throw new Error('Invalid questions format generated');
+      }
+
+      // Ensure we have at least some questions
+      if (quiz.questions.length === 0) {
+        throw new Error('No valid questions were generated');
+      }
+
+      // Save attempt with questions and adaptive info
+      const attempt = await this.prisma.attempt.create({
+        data: {
+          userId,
+          questions: quiz.questions,
+          performance: quiz.adaptiveInfo,
+        },
+      });
+
+      return {
+        attemptId: attempt.id,
         questions: quiz.questions,
-        performance: quiz.adaptiveInfo,
-      },
-    });
-
-    return {
-      attemptId: attempt.id,
-      questions: quiz.questions,
-      adaptiveInfo: quiz.adaptiveInfo,
-    };
+        adaptiveInfo: quiz.adaptiveInfo,
+      };
+    } catch (error) {
+      console.error('Error in startAdaptivePracticeAttempt:', error);
+      throw new Error(`Failed to start adaptive practice: ${error.message}`);
+    }
   }
 
   /**
@@ -691,6 +484,33 @@ OUTPUT: Return ONLY a valid JSON array. No markdown formatting, no explanations,
     // Calculate total score
     const score = performanceData.reduce((sum, perf) => sum + perf.correct, 0);
 
+    // Update lesson-level mastery for each lesson covered in assessment
+    const lessonScores = new Map<number, { correct: number; total: number }>();
+    
+    questions.forEach((q, idx) => {
+      const answer = responses[q.id ?? idx];
+      const isCorrect = q.options.find((o: any) => o.id === answer && o.isCorrect);
+      
+      if (q.lessonId) {
+        if (!lessonScores.has(q.lessonId)) {
+          lessonScores.set(q.lessonId, { correct: 0, total: 0 });
+        }
+        const lessonData = lessonScores.get(q.lessonId)!;
+        lessonData.total += 1;
+        if (isCorrect) lessonData.correct += 1;
+      }
+    });
+
+    // Update mastery for each lesson
+    for (const [lessonId, data] of lessonScores.entries()) {
+      const lessonScore = data.correct / data.total;
+      await this.adaptiveService.updateLessonMasteryFromAssessment(
+        attempt.userId,
+        lessonId,
+        lessonScore
+      );
+    }
+
     // Save responses, score, and BOTH feedbacks
     await this.prisma.attempt.update({
       where: { id: attemptId },
@@ -731,9 +551,21 @@ OUTPUT: Return ONLY a valid JSON array. No markdown formatting, no explanations,
    * Get attempt by ID
    */
   async getAttemptById(attemptId: number) {
-    return (this.prisma as any).attempt.findUnique({
+    const attempt = await (this.prisma as any).attempt.findUnique({
       where: { id: attemptId },
     });
+    
+    if (!attempt) {
+      return null;
+    }
+    
+    // Ensure questions is always an array
+    if (!Array.isArray(attempt.questions)) {
+      console.warn(`Attempt ${attemptId} has non-array questions, converting to array`);
+      attempt.questions = [];
+    }
+    
+    return attempt;
   }
 
   /**
