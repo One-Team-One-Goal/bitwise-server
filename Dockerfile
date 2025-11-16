@@ -9,10 +9,9 @@ FROM base AS builder
 ENV NODE_ENV=development
 
 COPY package*.json ./
+COPY prisma ./prisma
 
 RUN npm ci
-
-COPY prisma ./prisma
 
 RUN npm run prisma:generate
 
@@ -25,10 +24,9 @@ FROM base AS runner
 ENV NODE_ENV=production
 
 COPY package*.json ./
+COPY prisma ./prisma
 
 RUN npm ci --omit=dev
-
-COPY prisma ./prisma
 
 RUN npm run prisma:generate
 
