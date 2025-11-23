@@ -31,21 +31,52 @@ OBJECTIVE:
 Create questions that test DEEP UNDERSTANDING, PROBLEM-SOLVING, and APPLICATION.
 Avoid trivial definition questions. Focus on analysis, synthesis, and evaluation.
 
-QUESTION DISTRIBUTION (Total 20):
+QUESTION DISTRIBUTION (Total 20) - MUST BE STRICTLY FOLLOWED:
 - Lesson 1 (Foundations): ${context.questionDistribution.lesson1} questions
 - Lesson 2 (Logic Gates): ${context.questionDistribution.lesson2} questions
 - Lesson 3 (Boolean Laws): ${context.questionDistribution.lesson3} questions
 - Lesson 4 (K-Maps/Adv): ${context.questionDistribution.lesson4} questions
 
-CONTENT BALANCE ADJUSTMENTS:
-- **REDUCE TRUTH TABLES**: Limit standard truth table questions to maximum 3-4 per quiz. They are repetitive.
-- **INCREASE SIMPLIFICATION**: Prioritize questions about Boolean Laws (De Morgan's, Distributive, etc.) and algebraic simplification.
-- **CIRCUIT ANALYSIS**: Use the circuit visual type for logic gate analysis.
+⚠️ CRITICAL: QUESTION TYPE ENFORCEMENT BY LESSON ⚠️
+You MUST distribute question types according to the lesson content:
+
+**LESSON 1 (Foundations - lessonId: 1):**
+- Focus: Introduction, Boolean values, basic concepts, applications
+- Question Types: Text-based conceptual questions, simple truth tables (max 1-2)
+- Visual Requirement: 30-40% (not all questions need visuals)
+- Example: "Calculate the output of A OR B when A=1, B=0", "Simplify A + 0"
+
+**LESSON 2 (Logic Gates - lessonId: 2):**
+- Focus: AND, OR, NOT, NAND, NOR, XOR, XNOR gates
+- Question Types: **MUST USE CIRCUITS AND TRUTH TABLES**
+- Visual Requirement: 80-90% (almost all should use circuit or table visuals)
+- Example: Circuit with gates → analyze output, Truth table → identify gate type
+- **LIMIT TRUTH TABLES TO 2-3 QUESTIONS IN THIS LESSON**
+
+**LESSON 3 (Boolean Laws - lessonId: 3):**
+- Focus: Simplification using Identity, De Morgan's, Distributive, Absorption laws
+- Question Types: **ALGEBRAIC SIMPLIFICATION** (mostly text-based expressions)
+- Visual Requirement: 20-30% (focus on algebraic manipulation, not visuals)
+- Example: "Simplify: A·B + A·B̄", "Apply De Morgan's to (A+B)·(C+D)"
+- **NO TRUTH TABLES IN THIS LESSON** - use text expressions only
+
+**LESSON 4 (K-Maps/Advanced - lessonId: 4):**
+- Focus: Karnaugh Maps, SOP/POS forms, advanced optimization
+- Question Types: **MUST USE KARNAUGH MAP VISUALS**
+- Visual Requirement: 90-100% (almost all should use K-map visuals)
+- Example: K-map with 1s/0s → find minimal SOP, Given function → create K-map
+- **USE KARNAUGH MAPS, NOT TRUTH TABLES**
+
+VISUAL BALANCE (CRITICAL):
+- **MAXIMUM 4 TRUTH TABLE QUESTIONS** across entire quiz (enforce this strictly)
+- **MINIMUM 3 CIRCUIT DIAGRAMS** (for Lesson 2 questions)
+- **MINIMUM 3 KARNAUGH MAPS** (for Lesson 4 questions)
+- **MINIMUM 5 TEXT-ONLY ALGEBRAIC QUESTIONS** (for Lessons 1 and 3)
 
 STRICT CONSTRAINTS:
 1.  **NO MEMORIZATION**: Do not ask "What is X?" or "Define Y".
 2.  **ACTIVE VERBS**: Use "Calculate", "Analyze", "Design", "Simplify", "Derive".
-3.  **VISUALS**: At least 50% of questions MUST use a visual element (Truth Table, K-Map, Circuit).
+3.  **CORRECT lessonId**: Every question must have the correct lessonId (1, 2, 3, or 4) matching its lesson content.
 4.  **DISTINCT OPTIONS**: All 4 options must be unique and plausible.
 5.  **ONE CORRECT ANSWER**: There must be exactly one mathematically correct option.
 
