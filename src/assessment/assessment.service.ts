@@ -4,6 +4,7 @@ import { generateText } from 'ai';
 import { PrismaService } from 'prisma/prisma.service';
 import { AdaptiveService } from '../adaptive/adaptive.service';
 import { buildAdaptiveQuizPrompt } from './prompts/adaptive-quiz-generation';
+import { AI_CONFIG } from '../config/ai.config';
 
 @Injectable()
 export class AssessmentService {
@@ -39,6 +40,7 @@ export class AssessmentService {
   ];
 
   async extractJsonArray(text: string): Promise<any> {
+    // 1. Extract JSON content from Markdown code blocks or find array brackets
     const jsonArrayMatch = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/(\[\s*{[\s\S]*}\s*\])/);
     let jsonString = '';
 
@@ -57,6 +59,16 @@ export class AssessmentService {
       throw new Error('AI response did not contain a valid JSON array');
     }
 
+    // 2. Clean the JSON string to handle common LLM errors
+    // Remove single-line comments (// ...)
+    jsonString = jsonString.replace(/\/\/.*$/gm, '');
+    // Remove multi-line comments (/* ... */)
+    jsonString = jsonString.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Remove trailing commas before closing brackets/braces
+    jsonString = jsonString.replace(/,(\s*[\]}])/g, '$1');
+    // Fix unquoted keys (simple cases like key: "value")
+    jsonString = jsonString.replace(/([{,]\s*)([a-zA-Z0-9_]+)(\s*:)/g, '$1"$2"$3');
+
     try {
       const parsed = JSON.parse(jsonString);
       
@@ -68,7 +80,7 @@ export class AssessmentService {
       
       return parsed;
     } catch (err) {
-      console.error('JSON parse error:', err.message, '\nJSON string:', jsonString.substring(0, 500));
+      console.error('JSON parse error:', err.message, '\nJSON string snippet:', jsonString.substring(0, 500));
       throw new Error(`Failed to parse AI response as JSON: ${err.message}`);
     }
   }
@@ -263,42 +275,68 @@ private getTagRecommendation(tag: string): string | null {
 
     if (!lessons || lessons.length < 4) throw new Error('Not enough lessons found');
 
-    // Adjust question distribution based on user's weak areas
     const focusTopicIds = recommendations.focusTopics.map(t => t.topicId);
+    const focusLessonIds = recommendations.focusTopics.map(t => t.lessonId);
     
     let lesson1Topics = lessons.find(l => l.id === 1)?.topics ?? [];
     let lesson2Topics = lessons.find(l => l.id === 2)?.topics ?? [];
     let lesson3Topics = lessons.find(l => l.id === 3)?.topics ?? [];
     let lesson4Topics = lessons.find(l => l.id === 4)?.topics ?? [];
 
-    // Prioritize focus topics - move them to the front of their respective lesson arrays
-    if (focusTopicIds.length > 0) {
-      lesson1Topics = lesson1Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-        lesson1Topics.filter(t => !focusTopicIds.includes(t.id))
-      );
-      lesson2Topics = lesson2Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-        lesson2Topics.filter(t => !focusTopicIds.includes(t.id))
-      );
-      lesson3Topics = lesson3Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-        lesson3Topics.filter(t => !focusTopicIds.includes(t.id))
-      );
-      lesson4Topics = lesson4Topics.filter(t => focusTopicIds.includes(t.id)).concat(
-        lesson4Topics.filter(t => !focusTopicIds.includes(t.id))
-      );
+    const distribution = { lesson1: 3, lesson2: 3, lesson3: 3, lesson4: 3 };
+    let remainingQuestions = 8;
+
+    if (focusLessonIds.length > 0) {
+      const lessonCounts = focusLessonIds.reduce((acc, id) => {
+        acc[id] = (acc[id] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+
+      const totalFocusCount = focusLessonIds.length;
+
+      Object.entries(lessonCounts).forEach(([lessonId, count]) => {
+        const share = Math.round((count / totalFocusCount) * remainingQuestions);
+        if (lessonId === '1') distribution.lesson1 += share;
+        if (lessonId === '2') distribution.lesson2 += share;
+        if (lessonId === '3') distribution.lesson3 += share;
+        if (lessonId === '4') distribution.lesson4 += share;
+      });
+
+      const currentSum = Object.values(distribution).reduce((a, b) => a + b, 0);
+      const diff = 20 - currentSum;
+      
+      if (diff !== 0) {
+        const maxFocusLesson = Object.keys(lessonCounts).reduce((a, b) => lessonCounts[a] > lessonCounts[b] ? a : b, '4');
+        if (maxFocusLesson === '1') distribution.lesson1 += diff;
+        else if (maxFocusLesson === '2') distribution.lesson2 += diff;
+        else if (maxFocusLesson === '3') distribution.lesson3 += diff;
+        else distribution.lesson4 += diff;
+      }
+    } else {
+      distribution.lesson1 += 2;
+      distribution.lesson2 += 2;
+      distribution.lesson3 += 2;
+      distribution.lesson4 += 2;
     }
 
-    // Select topics for adaptive question distribution
+    const getTopicsForContext = (topics: any[], count: number) => {
+      const sorted = [...topics].sort((a, b) => {
+        const aIsFocus = focusTopicIds.includes(a.id);
+        const bIsFocus = focusTopicIds.includes(b.id);
+        return (aIsFocus === bIsFocus) ? 0 : aIsFocus ? -1 : 1;
+      });
+      return sorted.slice(0, Math.max(count, 3));
+    };
+
     const topicSelections = [
-      ...lesson1Topics.slice(0, 2),
-      ...lesson2Topics.slice(0, 6),
-      ...lesson3Topics.slice(0, 6),
-      ...lesson4Topics.slice(0, 6),
+      ...getTopicsForContext(lesson1Topics, distribution.lesson1),
+      ...getTopicsForContext(lesson2Topics, distribution.lesson2),
+      ...getTopicsForContext(lesson3Topics, distribution.lesson3),
+      ...getTopicsForContext(lesson4Topics, distribution.lesson4),
     ].filter(Boolean);
 
-    // Generate questions with adaptive difficulty
     const promptParts = topicSelections.map((topic, idx) => `
-      Topic ${idx + 1}:
-      Title: ${topic.title}
+      Topic: ${topic.title} (Lesson ${topic.lessonId})
       Content: ${topic.contentText}
     `);
 
@@ -306,21 +344,21 @@ private getTagRecommendation(tag: string): string | null {
       userMasteryPercent: parseFloat((recommendations.overallMastery * 100).toFixed(1)),
       recommendedDifficulty: recommendations.recommendedDifficulty,
       focusTopics: recommendations.focusTopics.map(t => t.topicTitle),
-      topicContents: promptParts
+      topicContents: promptParts,
+      questionDistribution: distribution
     });
 
-    // Read model and sampling controls from env with safe defaults
-    const modelName = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
-    const temp = process.env.LLM_TEMPERATURE ? Number(process.env.LLM_TEMPERATURE) : 0.3;
-    const topP = process.env.LLM_TOP_P ? Number(process.env.LLM_TOP_P) : 0.9;
+    // Read model and sampling controls from AI_CONFIG
+    const modelName = AI_CONFIG.modelName;
+    const temp = AI_CONFIG.temperature;
+    const topP = AI_CONFIG.topP;
 
-    // Helper to call the model and parse JSON with minimal retry for robustness
     const requestQuestions = async () => {
       const { text } = await generateText({
         model: groq(modelName),
         prompt,
-        temperature: isNaN(temp) ? 0.3 : temp,
-        topP: isNaN(topP) ? 0.9 : topP,
+        temperature: temp,
+        topP: topP,
       });
       return this.extractJsonArray(text);
     };
@@ -331,12 +369,12 @@ private getTagRecommendation(tag: string): string | null {
     if (!Array.isArray(questions)) {
       console.error('AI generated non-array response:', questions);
       // Retry once with slightly lower temperature for consistency
-      const retryTemp = Math.max(0.1, (isNaN(temp) ? 0.3 : temp) - 0.1);
+      const retryTemp = Math.max(0.1, temp - 0.1);
       const { text: retryText } = await generateText({
         model: groq(modelName),
         prompt,
         temperature: retryTemp,
-        topP: isNaN(topP) ? 0.9 : topP,
+        topP: topP,
       });
       questions = await this.extractJsonArray(retryText);
       if (!Array.isArray(questions)) {
@@ -344,25 +382,20 @@ private getTagRecommendation(tag: string): string | null {
       }
     }
 
-    // Enhanced validation and filtering
     const filteredQuestions = (questions || []).map((q: any, index: number) => {
-      // Ensure exactly one correct answer
       const correctOptions = q.options?.filter((opt: any) => opt.isCorrect) || [];
       if (correctOptions.length !== 1) {
         console.warn(`Question ${index + 1} has ${correctOptions.length} correct answers, should have exactly 1`);
-        // Fix by ensuring only the first correct option is marked as correct
         q.options?.forEach((opt: any, idx: number) => {
           opt.isCorrect = idx === 0 && correctOptions.length === 0 ? true : 
                         opt.isCorrect && correctOptions.indexOf(opt) === 0;
         });
       }
 
-      // Ensure 3-4 options
       if (q.options?.length < 3) {
         console.warn(`Question ${index + 1} has only ${q.options?.length} options, minimum is 3`);
       }
 
-      // Set answer ID to correct option
       const correctOption = q.options?.find((opt: any) => opt.isCorrect);
       if (correctOption) {
         q.answerId = correctOption.id;
@@ -381,6 +414,20 @@ private getTagRecommendation(tag: string): string | null {
 
     // Additional validation
     const validQuestions = filteredQuestions.filter((q: any) => {
+      // Check for broken visuals (text implies visual but stem is string)
+      if (typeof q.stem === 'string') {
+        const lowerStem = q.stem.toLowerCase();
+        if (lowerStem.includes('table below') || 
+            lowerStem.includes('circuit below') || 
+            lowerStem.includes('map below') ||
+            lowerStem.includes('shown below') ||
+            lowerStem.includes('following truth table') ||
+            lowerStem.includes('following circuit')) {
+           console.warn(`Question rejected: Text implies visual but stem is string: "${q.stem.substring(0, 50)}..."`);
+           return false;
+        }
+      }
+
       return q.stem && 
             q.options && 
             q.options.length >= 3 && 
