@@ -274,6 +274,87 @@ export class CalculatorService {
           return true;
         }
 
+        // XOR Expression: A ⊕ B = (A ∧ ¬B) ∨ (¬A ∧ B)
+        function XorExpression(subs) {
+          this.subs = subs; // expects exactly 2 operands
+        }
+        XorExpression.prototype.toString = function() {
+          return Utils.parenthesize(this.subs[0] + " " + SYMBOL.XOR + " " + this.subs[1]);
+        }
+        XorExpression.prototype.equals = function(object) {
+          if (!(object instanceof XorExpression)) {
+            return false;
+          }
+          return this.subs[0].equals(object.subs[0]) && this.subs[1].equals(object.subs[1]);
+        }
+        XorExpression.prototype.evaluate = function(variableStates) {
+          var a = this.subs[0].evaluate(variableStates);
+          var b = this.subs[1].evaluate(variableStates);
+          return (a && !b) || (!a && b);
+        }
+        // Convert XOR to AND/OR form: A ⊕ B = (A ∧ ¬B) ∨ (¬A ∧ B)
+        XorExpression.prototype.toAndOr = function() {
+          var a = this.subs[0];
+          var b = this.subs[1];
+          return new OrExpression([
+            new AndExpression([a, new NotExpression([b])]),
+            new AndExpression([new NotExpression([a]), b])
+          ]);
+        }
+
+        // IF Expression (Implication): A → B = ¬A ∨ B
+        function IfExpression(subs) {
+          this.subs = subs; // expects exactly 2 operands [antecedent, consequent]
+        }
+        IfExpression.prototype.toString = function() {
+          return Utils.parenthesize(this.subs[0] + " " + SYMBOL.IF + " " + this.subs[1]);
+        }
+        IfExpression.prototype.equals = function(object) {
+          if (!(object instanceof IfExpression)) {
+            return false;
+          }
+          return this.subs[0].equals(object.subs[0]) && this.subs[1].equals(object.subs[1]);
+        }
+        IfExpression.prototype.evaluate = function(variableStates) {
+          var a = this.subs[0].evaluate(variableStates);
+          var b = this.subs[1].evaluate(variableStates);
+          return !a || b; // A → B = ¬A ∨ B
+        }
+        // Convert Implication to OR form: A → B = ¬A ∨ B
+        IfExpression.prototype.toAndOr = function() {
+          var a = this.subs[0];
+          var b = this.subs[1];
+          return new OrExpression([new NotExpression([a]), b]);
+        }
+
+        // IFF Expression (Biconditional): A ↔ B = (A → B) ∧ (B → A) = (A ∧ B) ∨ (¬A ∧ ¬B)
+        function IffExpression(subs) {
+          this.subs = subs; // expects exactly 2 operands
+        }
+        IffExpression.prototype.toString = function() {
+          return Utils.parenthesize(this.subs[0] + " " + SYMBOL.IFF + " " + this.subs[1]);
+        }
+        IffExpression.prototype.equals = function(object) {
+          if (!(object instanceof IffExpression)) {
+            return false;
+          }
+          return this.subs[0].equals(object.subs[0]) && this.subs[1].equals(object.subs[1]);
+        }
+        IffExpression.prototype.evaluate = function(variableStates) {
+          var a = this.subs[0].evaluate(variableStates);
+          var b = this.subs[1].evaluate(variableStates);
+          return a === b; // A ↔ B is true when both have same value
+        }
+        // Convert Biconditional to AND/OR form: A ↔ B = (A ∧ B) ∨ (¬A ∧ ¬B)
+        IffExpression.prototype.toAndOr = function() {
+          var a = this.subs[0];
+          var b = this.subs[1];
+          return new OrExpression([
+            new AndExpression([a, b]),
+            new AndExpression([new NotExpression([a]), new NotExpression([b])])
+          ]);
+        }
+
         function equalsNegation(exp1, exp2) {
           var neg1 = new NotExpression([exp1]);
           var neg2 = new NotExpression([exp2]);
@@ -398,8 +479,8 @@ export class CalculatorService {
           var IFF_EXPRESSIONS = [SYMBOL.IFF, "<->"];
           var BINARY_EXPRESSIONS = [AND_EXPRESSIONS[0], OR_EXPRESSIONS[0], XOR_EXPRESSIONS[0], IF_EXPRESSIONS[0], IFF_EXPRESSIONS[0]];
 
-          var OPEN_PARENS = "\\(";
-          var CLOSE_PARENS = "\\)";
+          var OPEN_PARENS = "(";
+          var CLOSE_PARENS = ")";
 
           this.parse = function(expression) {
             if (invalidParentheses(expression)) {
@@ -495,8 +576,41 @@ export class CalculatorService {
                     return processAndExpression(array);
                   case OR_EXPRESSIONS[0]:
                     return processOrExpression(array);
+                  case XOR_EXPRESSIONS[0]:
+                    // XOR: A ⊕ B - convert immediately to AND/OR form
+                    var xorLeft = preBinary.length > 0 ? processParsedArray(preBinary) : null;
+                    var xorRight = postBinary.length > 0 ? processParsedArray(postBinary) : null;
+                    if (!xorLeft || !xorRight) {
+                      throw "Parsing error: XOR requires two operands";
+                    }
+                    // Convert to (A ∧ ¬B) ∨ (¬A ∧ B)
+                    return new OrExpression([
+                      new AndExpression([xorLeft, new NotExpression([xorRight])]),
+                      new AndExpression([new NotExpression([xorLeft]), xorRight])
+                    ]);
+                  case IF_EXPRESSIONS[0]:
+                    // Implication: A → B - convert immediately to ¬A ∨ B
+                    var ifLeft = preBinary.length > 0 ? processParsedArray(preBinary) : null;
+                    var ifRight = postBinary.length > 0 ? processParsedArray(postBinary) : null;
+                    if (!ifLeft || !ifRight) {
+                      throw "Parsing error: Implication (→) requires two operands";
+                    }
+                    // Convert to ¬A ∨ B
+                    return new OrExpression([new NotExpression([ifLeft]), ifRight]);
+                  case IFF_EXPRESSIONS[0]:
+                    // Biconditional: A ↔ B - convert immediately to (A ∧ B) ∨ (¬A ∧ ¬B)
+                    var iffLeft = preBinary.length > 0 ? processParsedArray(preBinary) : null;
+                    var iffRight = postBinary.length > 0 ? processParsedArray(postBinary) : null;
+                    if (!iffLeft || !iffRight) {
+                      throw "Parsing error: Biconditional (↔) requires two operands";
+                    }
+                    // Convert to (A ∧ B) ∨ (¬A ∧ ¬B)
+                    return new OrExpression([
+                      new AndExpression([iffLeft, iffRight]),
+                      new AndExpression([new NotExpression([iffLeft]), new NotExpression([iffRight])])
+                    ]);
                   default:
-                    throw "Parsing error. AB idx:" + index;
+                    throw "Parsing error. Unknown operator at index: " + index;
                 }
               }
             }
@@ -567,7 +681,8 @@ export class CalculatorService {
           }
 
           var isAssociativeOperator = function(exp) {
-            return exp == AND_EXPRESSIONS[0] || exp == OR_EXPRESSIONS[0] || exp == XOR_EXPRESSIONS[0];
+            // Only AND and OR are truly associative; XOR, IF, IFF are binary and converted immediately
+            return exp == AND_EXPRESSIONS[0] || exp == OR_EXPRESSIONS[0];
           }
 
           var invalidParentheses = function(expression) {
@@ -1287,8 +1402,9 @@ export class CalculatorService {
   }
 
   private sanitizeExpression(expression: string): string {
-    // Allow variables, operators, parentheses, and the symbols ^ and v
-    return expression.replace(/[^\w\s∧∨¬()~!^v]/g, '');
+    // Allow variables, operators, parentheses, and Boolean operator symbols
+    // ∧ (AND), ∨ (OR), ¬ (NOT), ⊕ (XOR), → (IMPLIES), ↔ (IFF)
+    return expression.replace(/[^\w\s∧∨¬⊕→↔()~!^v<>\-]/g, '');
   }
 
   async simplifyExpression(expression: string): Promise<CalculationResponse> {
