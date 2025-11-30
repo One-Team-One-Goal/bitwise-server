@@ -17,14 +17,25 @@ export class AssessmentController {
   async startAdaptivePractice(@Body() body: { uid: string }) {
     try {
       const result = await this.assessmentService.startAdaptivePracticeAttempt(body.uid);
+      
+      // Double-check that questions is an array before returning
+      if (!result.questions || !Array.isArray(result.questions)) {
+        console.error('Result questions is not an array:', result.questions);
+        return {
+          success: false,
+          error: 'Failed to generate valid assessment questions. Please try again.'
+        };
+      }
+      
       return {
         success: true,
         data: result
       };
     } catch (error) {
+      console.error('Error in startAdaptivePractice controller:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message || 'Failed to start adaptive assessment. Please try again.'
       };
     }
   }

@@ -233,4 +233,139 @@ export class AdaptiveService {
 
     return feedback;
   }
+
+  /**
+   * Update lesson mastery based on assessment score
+   */
+  async updateLessonMasteryFromAssessment(
+    userId: string,
+    lessonId: number,
+    assessmentScore: number // 0.0 to 1.0
+  ) {
+    // Get current mastery
+    const current = await this.prisma.userLessonMastery.findUnique({
+      where: { userId_lessonId: { userId, lessonId } }
+    });
+
+    // Calculate new mastery (weighted average favoring recent performance)
+    const weight = 0.4; // How much new assessment affects mastery
+    const newMastery = current
+      ? current.masteryScore * (1 - weight) + assessmentScore * weight
+      : assessmentScore;
+
+    // Update mastery
+    await this.prisma.userLessonMastery.upsert({
+      where: { userId_lessonId: { userId, lessonId } },
+      update: {
+        masteryScore: newMastery,
+        assessmentCount: { increment: 1 },
+        lastAssessmentAt: new Date()
+      },
+      create: {
+        userId,
+        lessonId,
+        masteryScore: assessmentScore,
+        assessmentCount: 1,
+        lastAssessmentAt: new Date()
+      }
+    });
+
+    // Also update UserLesson with this mastery score
+    const userLesson = await this.prisma.userLesson.findUnique({
+      where: { userId_lessonId: { userId, lessonId } }
+    });
+
+    if (userLesson) {
+      await this.prisma.userLesson.update({
+        where: { userId_lessonId: { userId, lessonId } },
+        data: { masteryScore: newMastery }
+      });
+    }
+
+    return newMastery;
+  }
+
+  /**
+   * Get enhanced adaptive recommendations including lesson-level mastery
+   */
+  async getAdaptiveRecommendationsEnhanced(userId: string) {
+    const userSkills = await this.getUserSkills(userId); // Topic-level
+    const lessonMasteries = await this.prisma.userLessonMastery.findMany({
+      where: { userId },
+      include: { lesson: true }
+    });
+
+    // Calculate overall mastery from lesson-level scores if available
+    const overallMastery = lessonMasteries.length > 0
+      ? lessonMasteries.reduce((sum, lm) => sum + lm.masteryScore, 0) / lessonMasteries.length
+      : userSkills.reduce((sum, skill) => sum + skill.mastery, 0) / (userSkills.length || 1);
+
+    // Find weakest lessons
+    const weakestLessons = lessonMasteries
+      .sort((a, b) => a.masteryScore - b.masteryScore)
+      .slice(0, 2);
+
+    // Get topic-level recommendations
+    const weakestSkills = userSkills
+      .sort((a, b) => a.mastery - b.mastery)
+      .slice(0, 3);
+
+    const needsReinforcement = userSkills.filter(skill => skill.level < 0.6);
+
+    let recommendedDifficulty: string;
+    if (overallMastery < 0.4) {
+      recommendedDifficulty = 'easy';
+    } else if (overallMastery < 0.7) {
+      recommendedDifficulty = 'medium';
+    } else {
+      recommendedDifficulty = 'hard';
+    }
+
+    return {
+      overallMastery,
+      recommendedDifficulty,
+      lessonMasteries: lessonMasteries.map(lm => ({
+        lessonId: lm.lessonId,
+        lessonTitle: lm.lesson.title,
+        mastery: lm.masteryScore,
+        assessmentCount: lm.assessmentCount,
+        lastAssessmentAt: lm.lastAssessmentAt
+      })),
+      weakestLessons: weakestLessons.map(wl => ({
+        lessonId: wl.lessonId,
+        lessonTitle: wl.lesson.title,
+        mastery: wl.masteryScore
+      })),
+      focusTopics: weakestSkills.map(skill => ({
+        topicId: skill.topicId,
+        topicTitle: skill.topic.title,
+        lessonId: skill.topic.lessonId,
+        mastery: skill.mastery,
+        level: skill.level
+      })),
+      reinforcementNeeded: needsReinforcement.map(skill => ({
+        topicId: skill.topicId,
+        topicTitle: skill.topic.title,
+        level: skill.level
+      }))
+    };
+  }
+
+  /**
+   * Calculate lesson-level score from assessment questions
+   */
+  calculateLessonScore(questions: any[], responses: any, lessonId: number): number {
+    const lessonQuestions = questions.filter(q => q.lessonId === lessonId);
+    
+    if (lessonQuestions.length === 0) return 0;
+
+    let correct = 0;
+    lessonQuestions.forEach((q, idx) => {
+      const answer = responses[q.id ?? idx];
+      const isCorrect = q.options.find((o: any) => o.id === answer && o.isCorrect);
+      if (isCorrect) correct++;
+    });
+
+    return correct / lessonQuestions.length;
+  }
 }
