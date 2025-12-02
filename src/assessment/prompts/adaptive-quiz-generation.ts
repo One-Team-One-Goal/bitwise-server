@@ -16,26 +16,53 @@ export interface PromptContext {
     lesson3: number;
     lesson4: number;
   };
+  totalQuestions?: number;
+  topicDistribution?: Array<{
+    topicId: number;
+    topicTitle: string;
+    questionCount: number;
+  }>;
+  weakestTopics?: Array<{
+    topicId: number;
+    topicTitle: string;
+    mastery: number;
+  }>;
 }
 
 export function buildAdaptiveQuizPrompt(context: PromptContext): string {
   return `
-You are a distinguished University Professor of Digital Logic and Boolean Algebra. Your task is to generate a rigorous, high-quality 20-item multiple-choice assessment.
+You are a distinguished University Professor of Digital Logic and Boolean Algebra. Your task is to generate a rigorous, high-quality ${context.totalQuestions || 30}-item multiple-choice assessment.
 
 TARGET AUDIENCE: Computer Science/Engineering students.
 DIFFICULTY LEVEL: ${context.recommendedDifficulty}
 USER MASTERY: ${context.userMasteryPercent}%
 FOCUS AREAS: ${context.focusTopics.join(', ')}
 
+🎯 ADAPTIVE FOCUS - User's Weakest Areas:
+${context.weakestTopics ? context.weakestTopics.map(wt => `- ${wt.topicTitle} (Current Mastery: ${Math.round(wt.mastery * 100)}%)`).join('\n') : 'No specific weak areas identified'}
+
 OBJECTIVE:
 Create questions that test DEEP UNDERSTANDING, PROBLEM-SOLVING, and APPLICATION.
 Avoid trivial definition questions. Focus on analysis, synthesis, and evaluation.
+Pay EXTRA attention to the user's weakest topics identified above.
 
-QUESTION DISTRIBUTION (Total 20) - MUST BE STRICTLY FOLLOWED:
-- Lesson 1 (Foundations): ${context.questionDistribution.lesson1} questions
-- Lesson 2 (Logic Gates): ${context.questionDistribution.lesson2} questions
-- Lesson 3 (Boolean Laws): ${context.questionDistribution.lesson3} questions
-- Lesson 4 (K-Maps/Adv): ${context.questionDistribution.lesson4} questions
+🎯 MANDATORY: GENERATE EXACTLY ${context.totalQuestions || 30} QUESTIONS - NO MORE, NO LESS! 🎯
+
+QUESTION DISTRIBUTION (Total ${context.totalQuestions || 30}) - MUST BE STRICTLY FOLLOWED:
+- Lesson 1 (Intro to Boolean Algebra): ${context.questionDistribution.lesson1} questions
+- Lesson 2 (Logic Gates): ${context.questionDistribution.lesson2} questions  
+- Lesson 3 (Truth Tables): ${context.questionDistribution.lesson3} questions
+- Lesson 4 (Simplification): ${context.questionDistribution.lesson4} questions
+
+${context.topicDistribution ? `
+🔥 DETAILED TOPIC BREAKDOWN - CRITICAL TO FOLLOW EXACTLY:
+${context.topicDistribution.map(td => `- ${td.topicTitle}: EXACTLY ${td.questionCount} questions ${td.questionCount > 2 ? '🔥 (WEAK AREA - EXTRA FOCUS)' : '📝'}`).join('\n')}
+
+📊 ADAPTIVE ALGORITHM EXPLANATION:
+- Base: 2 questions per topic (${context.topicDistribution ? context.topicDistribution.filter(td => td.questionCount === 2).length * 2 : 24} questions)
+- Extra: ${context.weakestTopics ? context.weakestTopics.length * 2 : 6} additional questions for weakest areas
+- Total: ${context.totalQuestions || 30} questions exactly
+` : ''}
 
 ⚠️ CRITICAL: QUESTION TYPE ENFORCEMENT BY LESSON ⚠️
 You MUST distribute question types according to the lesson content:
@@ -176,7 +203,18 @@ ALLOWED TAGS:
 CONTEXTUAL CONTENT:
 ${context.topicContents.join('\n\n')}
 
-GENERATE 20 HIGH-QUALITY QUESTIONS NOW.
+🚨 FINAL INSTRUCTIONS - ABSOLUTELY CRITICAL 🚨
+
+GENERATE EXACTLY ${context.totalQuestions || 30} HIGH-QUALITY QUESTIONS NOW.
+
+⚠️ NON-NEGOTIABLE REQUIREMENTS:
+1. EXACTLY ${context.totalQuestions || 30} questions in your JSON array - count them!
+2. Each question MUST have the correct topicId matching the topic it's testing
+3. Follow the DETAILED TOPIC BREAKDOWN above - each topic gets its specified question count
+4. Focus extra questions on weak areas (${context.weakestTopics ? context.weakestTopics.map(wt => wt.topicTitle).join(', ') : 'identified above'}) 
+5. Return a valid JSON array with ${context.totalQuestions || 30} question objects
+
+🔍 BEFORE SUBMITTING: Count your questions and ensure you have EXACTLY ${context.totalQuestions || 30}!
 `;
 }
 

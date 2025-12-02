@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
 import { PrismaService } from 'prisma/prisma.service';
 import { AdaptiveService } from '../adaptive/adaptive.service';
 import { buildAdaptiveQuizPrompt } from './prompts/adaptive-quiz-generation';
-import { AI_CONFIG } from '../config/ai.config';
+import { AI_CONFIG, groq } from '../config/ai.config';
 
 @Injectable()
 export class AssessmentService {
@@ -41,7 +40,7 @@ export class AssessmentService {
 
   async extractJsonArray(text: string): Promise<any> {
     // 1. Extract JSON content from Markdown code blocks or find array brackets
-    const jsonArrayMatch = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/(\[\s*{[\s\S]*}\s*\])/);
+    const jsonArrayMatch = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/(\[\s*\{[\s\S]*\}\s*\])/);;
     let jsonString = '';
 
     if (jsonArrayMatch) {
@@ -259,14 +258,138 @@ private getTagRecommendation(tag: string): string | null {
   return recommendations[tag] || null;
 }
 
+/**
+ * Calculate difficulty progression based on user's attempt history
+ * Implements the revised difficulty progression rules
+ */
+private async calculateDifficultyProgression(userId: string): Promise<{
+  currentDifficulty: string;
+  canProgressToMedium: boolean;
+  canProgressToHard: boolean;
+  progressionStatus: string;
+  attemptCount: number;
+  averageMastery: number;
+}> {
+  // Get user's recent attempts
+  const attempts = await this.getUserAttempts(userId);
+  
+  if (attempts.length === 0) {
+    return {
+      currentDifficulty: 'easy',
+      canProgressToMedium: false,
+      canProgressToHard: false,
+      progressionStatus: 'Start with easy difficulty',
+      attemptCount: 0,
+      averageMastery: 0
+    };
+  }
+
+  const attemptCount = attempts.length;
+  const recentAttempts = attempts.slice(0, Math.min(5, attempts.length)); // Last 5 attempts
+  
+  // Calculate mastery percentages for each attempt
+  const masteryPercentages = recentAttempts.map(attempt => {
+    const questions = attempt.questions as any[];
+    if (!questions || questions.length === 0) return 0;
+    
+    const responses = attempt.responses || {};
+    let correctAnswers = 0;
+    
+    questions.forEach((q, idx) => {
+      const answer = responses[q.id ?? idx];
+      const isCorrect = q.options?.find((o: any) => o.id === answer && o.isCorrect);
+      if (isCorrect) correctAnswers++;
+    });
+    
+    return Math.round((correctAnswers / questions.length) * 100);
+  });
+
+  const averageMastery = masteryPercentages.length > 0 ? 
+    Math.round(masteryPercentages.reduce((sum, score) => sum + score, 0) / masteryPercentages.length) : 0;
+  
+  const latestMastery = masteryPercentages[0] || 0;
+
+  console.log(`User ${userId} difficulty progression analysis:`);
+  console.log(`- Attempt count: ${attemptCount}`);
+  console.log(`- Recent mastery scores: ${masteryPercentages.join(', ')}%`);
+  console.log(`- Average mastery: ${averageMastery}%`);
+  console.log(`- Latest mastery: ${latestMastery}%`);
+
+  // Determine current difficulty and progression eligibility
+  let currentDifficulty = 'easy';
+  let canProgressToMedium = false;
+  let canProgressToHard = false;
+  let progressionStatus = '';
+
+  // Rules for Medium difficulty progression
+  if (attemptCount === 1) {
+    if (latestMastery >= 90) {
+      progressionStatus = 'Excellent first attempt (90%+)! Complete 2 more attempts maintaining 40%+ to unlock medium difficulty.';
+    } else if (latestMastery >= 70) {
+      progressionStatus = 'Good first attempt! Keep practicing to improve your mastery.';
+    } else {
+      progressionStatus = 'Keep practicing to improve your understanding of the concepts.';
+    }
+  } else if (attemptCount >= 2 && attemptCount < 5) {
+    // Check if user had 90%+ on first attempt and maintained 40%+ average
+    const firstAttemptMastery = masteryPercentages[masteryPercentages.length - 1]; // First attempt (last in reversed array)
+    
+    if (firstAttemptMastery >= 90 && averageMastery >= 40) {
+      canProgressToMedium = true;
+      currentDifficulty = 'medium';
+      progressionStatus = `Unlocked medium difficulty! (First attempt: ${firstAttemptMastery}%, Average: ${averageMastery}%)`;
+    } else if (firstAttemptMastery >= 90) {
+      progressionStatus = `Maintain average mastery above 40% to unlock medium. Current average: ${averageMastery}%`;
+    } else {
+      progressionStatus = 'Continue practicing to improve mastery.';
+    }
+  } else if (attemptCount >= 5) {
+    // Check progression to hard difficulty after 5th attempt
+    const firstAttemptMastery = masteryPercentages[masteryPercentages.length - 1];
+    
+    if (firstAttemptMastery >= 90 && averageMastery >= 40) {
+      canProgressToMedium = true;
+      currentDifficulty = 'medium';
+      
+      if (averageMastery >= 70) {
+        canProgressToHard = true;
+        currentDifficulty = 'hard';
+        progressionStatus = `Unlocked hard difficulty! (Average mastery: ${averageMastery}%)`;
+      } else {
+        progressionStatus = `Medium difficulty unlocked. Achieve 70%+ average mastery to unlock hard difficulty. Current: ${averageMastery}%`;
+      }
+    } else if (firstAttemptMastery >= 90) {
+      progressionStatus = `Maintain average mastery above 40% to progress. Current average: ${averageMastery}%`;
+    } else {
+      progressionStatus = 'Continue practicing. Focus on achieving higher mastery scores.';
+    }
+  }
+
+  return {
+    currentDifficulty,
+    canProgressToMedium,
+    canProgressToHard,
+    progressionStatus,
+    attemptCount,
+    averageMastery
+  };
+}
+
 
 
     /**
    * Generate adaptive practice assessment based on user's skill level
    */
   async generateAdaptivePracticeAssessment(userId: string) {
+    // Calculate difficulty progression first
+    const difficultyProgression = await this.calculateDifficultyProgression(userId);
+    console.log(`User ${userId} difficulty progression:`, difficultyProgression);
+    
     // Get adaptive recommendations
     const recommendations = await this.adaptiveService.getAdaptiveRecommendations(userId);
+    
+    // Override recommended difficulty with progression-based difficulty
+    recommendations.recommendedDifficulty = difficultyProgression.currentDifficulty;
     
     // Get all lessons and their topics
     const lessons = await this.prisma.lesson.findMany({
@@ -275,68 +398,84 @@ private getTagRecommendation(tag: string): string | null {
 
     if (!lessons || lessons.length < 4) throw new Error('Not enough lessons found');
 
-    const focusTopicIds = recommendations.focusTopics.map(t => t.topicId);
-    const focusLessonIds = recommendations.focusTopics.map(t => t.lessonId);
+    // Get all topics across all lessons
+    const allTopics = lessons.flatMap(lesson => lesson.topics);
+    console.log(`Found ${allTopics.length} total topics across ${lessons.length} lessons`);
+
+    if (allTopics.length === 0) throw new Error('No topics found');
+
+    // Get user skills to identify weakest topics
+    const userSkills = await this.adaptiveService.getUserSkills(userId);
+    const skillsByTopicId = userSkills.reduce((acc, skill) => {
+      acc[skill.topicId] = skill.mastery;
+      return acc;
+    }, {} as Record<number, number>);
+
+    // Calculate mastery for each topic (default 0.5 if no data)
+    const topicMasteries = allTopics.map(topic => ({
+      topicId: topic.id,
+      lessonId: topic.lessonId,
+      mastery: skillsByTopicId[topic.id] || 0.5,
+      topic
+    }));
+
+    // Find the 3 weakest topics
+    const weakestTopics = topicMasteries
+      .sort((a, b) => a.mastery - b.mastery)
+      .slice(0, 3);
+
+    console.log('Weakest topics:', weakestTopics.map(t => `Topic ${t.topicId} (${t.topic.title}) - mastery: ${t.mastery}`));
+
+    // Create distribution: 2 questions per topic (24 total) + 6 extra for weakest topics (2 each) = 30 total
+    const topicDistribution = new Map<number, number>();
     
-    let lesson1Topics = lessons.find(l => l.id === 1)?.topics ?? [];
-    let lesson2Topics = lessons.find(l => l.id === 2)?.topics ?? [];
-    let lesson3Topics = lessons.find(l => l.id === 3)?.topics ?? [];
-    let lesson4Topics = lessons.find(l => l.id === 4)?.topics ?? [];
+    // Give each topic 2 base questions
+    allTopics.forEach(topic => {
+      topicDistribution.set(topic.id, 2);
+    });
 
-    const distribution = { lesson1: 3, lesson2: 3, lesson3: 3, lesson4: 3 };
-    let remainingQuestions = 8;
+    // Add 2 extra questions for each of the 3 weakest topics
+    weakestTopics.forEach(({ topicId }) => {
+      const currentCount = topicDistribution.get(topicId) || 0;
+      topicDistribution.set(topicId, currentCount + 2);
+    });
 
-    if (focusLessonIds.length > 0) {
-      const lessonCounts = focusLessonIds.reduce((acc, id) => {
-        acc[id] = (acc[id] || 0) + 1;
-        return acc;
-      }, {} as Record<number, number>);
+    console.log('Topic distribution:', Array.from(topicDistribution.entries()).map(([topicId, count]) => {
+      const topic = allTopics.find(t => t.id === topicId);
+      return `Topic ${topicId} (${topic?.title}): ${count} questions`;
+    }));
 
-      const totalFocusCount = focusLessonIds.length;
-
-      Object.entries(lessonCounts).forEach(([lessonId, count]) => {
-        const share = Math.round((count / totalFocusCount) * remainingQuestions);
-        if (lessonId === '1') distribution.lesson1 += share;
-        if (lessonId === '2') distribution.lesson2 += share;
-        if (lessonId === '3') distribution.lesson3 += share;
-        if (lessonId === '4') distribution.lesson4 += share;
-      });
-
-      const currentSum = Object.values(distribution).reduce((a, b) => a + b, 0);
-      const diff = 20 - currentSum;
-      
-      if (diff !== 0) {
-        const maxFocusLesson = Object.keys(lessonCounts).reduce((a, b) => lessonCounts[a] > lessonCounts[b] ? a : b, '4');
-        if (maxFocusLesson === '1') distribution.lesson1 += diff;
-        else if (maxFocusLesson === '2') distribution.lesson2 += diff;
-        else if (maxFocusLesson === '3') distribution.lesson3 += diff;
-        else distribution.lesson4 += diff;
+    // Convert to lesson distribution for prompt compatibility
+    const distribution = { lesson1: 0, lesson2: 0, lesson3: 0, lesson4: 0 };
+    topicDistribution.forEach((count, topicId) => {
+      const topic = allTopics.find(t => t.id === topicId);
+      if (topic) {
+        const lessonKey = `lesson${topic.lessonId}` as keyof typeof distribution;
+        distribution[lessonKey] += count;
       }
-    } else {
-      distribution.lesson1 += 2;
-      distribution.lesson2 += 2;
-      distribution.lesson3 += 2;
-      distribution.lesson4 += 2;
-    }
+    });
 
-    const getTopicsForContext = (topics: any[], count: number) => {
-      const sorted = [...topics].sort((a, b) => {
-        const aIsFocus = focusTopicIds.includes(a.id);
-        const bIsFocus = focusTopicIds.includes(b.id);
-        return (aIsFocus === bIsFocus) ? 0 : aIsFocus ? -1 : 1;
-      });
-      return sorted.slice(0, Math.max(count, 3));
-    };
+    console.log('Lesson distribution:', distribution);
+    const totalQuestions = Object.values(distribution).reduce((a, b) => a + b, 0);
+    console.log(`Total questions planned: ${totalQuestions}`);
 
-    const topicSelections = [
-      ...getTopicsForContext(lesson1Topics, distribution.lesson1),
-      ...getTopicsForContext(lesson2Topics, distribution.lesson2),
-      ...getTopicsForContext(lesson3Topics, distribution.lesson3),
-      ...getTopicsForContext(lesson4Topics, distribution.lesson4),
-    ].filter(Boolean);
+    // Select all topics with their question counts and priorities
+    const topicSelections = allTopics.map(topic => {
+      const questionCount = topicDistribution.get(topic.id) || 0;
+      const isWeak = weakestTopics.some(wt => wt.topicId === topic.id);
+      
+      return {
+        ...topic,
+        questionCount,
+        isWeak,
+        priority: isWeak ? 'HIGH (Weak Area)' : 'NORMAL'
+      };
+    }).filter(t => t.questionCount > 0);
 
-    const promptParts = topicSelections.map((topic, idx) => `
-      Topic: ${topic.title} (Lesson ${topic.lessonId})
+    console.log('Selected topics:', topicSelections.map(t => `${t.title}: ${t.questionCount} questions (${t.priority})`));
+
+    const promptParts = topicSelections.map(topic => `
+      Topic: ${topic.title} (Lesson ${topic.lessonId}, Questions: ${topic.questionCount}, Priority: ${topic.priority})
       Content: ${topic.contentText}
     `);
 
@@ -345,7 +484,18 @@ private getTagRecommendation(tag: string): string | null {
       recommendedDifficulty: recommendations.recommendedDifficulty,
       focusTopics: recommendations.focusTopics.map(t => t.topicTitle),
       topicContents: promptParts,
-      questionDistribution: distribution
+      questionDistribution: distribution,
+      totalQuestions: 30,
+      topicDistribution: topicSelections.map(topic => ({
+        topicId: topic.id,
+        topicTitle: topic.title,
+        questionCount: topic.questionCount
+      })),
+      weakestTopics: weakestTopics.map(wt => ({
+        topicId: wt.topicId,
+        topicTitle: wt.topic.title,
+        mastery: wt.mastery
+      }))
     });
 
     // Read model and sampling controls from AI_CONFIG
@@ -401,6 +551,25 @@ private getTagRecommendation(tag: string): string | null {
         q.answerId = correctOption.id;
       }
 
+      // Ensure topicId is properly set based on lessonId if missing
+      if (!q.topicId && q.lessonId) {
+        const lessonTopics = allTopics.filter(t => t.lessonId === q.lessonId);
+        if (lessonTopics.length > 0) {
+          // Prefer weak topics first, then any topic from the lesson
+          const weakTopic = lessonTopics.find(t => weakestTopics.some(wt => wt.topicId === t.id));
+          q.topicId = weakTopic?.id || lessonTopics[0].id;
+        }
+      }
+      
+      // Validate topicId exists in our topics list
+      if (!allTopics.some(t => t.id === q.topicId)) {
+        console.warn(`Question ${index + 1} has invalid topicId ${q.topicId}, fixing...`);
+        const lessonTopics = allTopics.filter(t => t.lessonId === q.lessonId);
+        if (lessonTopics.length > 0) {
+          q.topicId = lessonTopics[0].id;
+        }
+      }
+
       return {
         ...q,
         difficulty: recommendations.recommendedDifficulty,
@@ -435,13 +604,29 @@ private getTagRecommendation(tag: string): string | null {
             q.options.filter((opt: any) => opt.isCorrect).length === 1;
     });
 
-    if (validQuestions.length < 15) {
-      console.warn(`Only ${validQuestions.length} valid questions generated, expected 20`);
+    if (validQuestions.length < 25) {
+      console.warn(`Only ${validQuestions.length} valid questions generated, expected 30`);
     }
 
+    console.log(`Generated ${validQuestions.length} valid questions`);
+    
+    // Track actual distribution by topic
+    const actualTopicDistribution = new Map<number, number>();
+    validQuestions.slice(0, 30).forEach(q => {
+      const count = actualTopicDistribution.get(q.topicId) || 0;
+      actualTopicDistribution.set(q.topicId, count + 1);
+    });
+    
+    console.log('Actual question distribution by topic:', Array.from(actualTopicDistribution.entries()).map(([topicId, count]) => {
+      const topic = allTopics.find(t => t.id === topicId);
+      return `Topic ${topicId} (${topic?.title}): ${count} questions`;
+    }));
+
     return { 
-      questions: validQuestions.slice(0, 20), // Ensure we don't exceed 20 questions
-      adaptiveInfo: recommendations
+      questions: validQuestions.slice(0, 30), // Ensure we get exactly 30 questions
+      adaptiveInfo: recommendations,
+      plannedDistribution: topicDistribution,
+      actualDistribution: actualTopicDistribution
     };
   }
 
@@ -474,10 +659,14 @@ private getTagRecommendation(tag: string): string | null {
         },
       });
 
+      // Get difficulty progression info
+      const difficultyProgression = await this.calculateDifficultyProgression(userId);
+
       return {
         attemptId: attempt.id,
         questions: quiz.questions,
         adaptiveInfo: quiz.adaptiveInfo,
+        difficultyProgression: difficultyProgression,
       };
     } catch (error) {
       console.error('Error in startAdaptivePracticeAttempt:', error);
@@ -572,15 +761,25 @@ private getTagRecommendation(tag: string): string | null {
       },
     });
 
+    // Get updated difficulty progression after this attempt
+    const updatedProgression = await this.calculateDifficultyProgression(attempt.userId);
+    
+    // Add progression feedback to attempt feedback
+    let enhancedFeedback = attemptAnalysis.attemptFeedback;
+    if (updatedProgression.progressionStatus) {
+      enhancedFeedback += ` ${updatedProgression.progressionStatus}`;
+    }
+
     return { 
       score, 
       feedback: adaptiveFeedback, // Long-term feedback
-      attemptFeedback: attemptAnalysis.attemptFeedback, // Immediate attempt feedback
+      attemptFeedback: enhancedFeedback, // Enhanced with progression feedback
       weakestAreas: attemptAnalysis.weakestTags,
       strongestAreas: attemptAnalysis.strongestTags,
       recommendations: attemptAnalysis.recommendations,
       topicPerformance: performanceData,
-      detailedBreakdown: attemptAnalysis.topicBreakdown
+      detailedBreakdown: attemptAnalysis.topicBreakdown,
+      difficultyProgression: updatedProgression // Include progression status
     };
   }
 
