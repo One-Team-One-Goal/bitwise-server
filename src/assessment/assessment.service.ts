@@ -3,6 +3,7 @@ import { generateText } from 'ai';
 import { PrismaService } from 'prisma/prisma.service';
 import { AdaptiveService } from '../adaptive/adaptive.service';
 import { buildAdaptiveQuizPrompt } from './prompts/adaptive-quiz-generation';
+import { buildLessonQuizPrompt, getDifficultyFromMastery, LessonQuizContext } from './prompts/lesson-quiz-generation';
 import { AI_CONFIG, groq } from '../config/ai.config';
 
 @Injectable()
@@ -671,6 +672,310 @@ private async calculateDifficultyProgression(userId: string): Promise<{
     } catch (error) {
       console.error('Error in startAdaptivePracticeAttempt:', error);
       throw new Error(`Failed to start adaptive practice: ${error.message}`);
+    }
+  }
+
+  /**
+   * Start a lesson-specific practice attempt
+   * Generates 10 questions for a single lesson with topic-specific difficulty
+   */
+  async startLessonPracticeAttempt(userId: string, lessonId: number) {
+    try {
+      console.log(`Starting lesson practice for user ${userId}, lesson ${lessonId}`);
+
+      // Get the lesson with its topics
+      const lesson = await this.prisma.lesson.findUnique({
+        where: { id: lessonId },
+        include: { topics: true }
+      });
+
+      if (!lesson) {
+        throw new Error(`Lesson ${lessonId} not found`);
+      }
+
+      if (lesson.topics.length === 0) {
+        throw new Error(`Lesson ${lessonId} has no topics`);
+      }
+
+      console.log(`Found lesson "${lesson.title}" with ${lesson.topics.length} topics`);
+
+      // Initialize user skills if needed
+      await this.adaptiveService.initializeUserSkills(userId);
+
+      // Get user's mastery for each topic in this lesson
+      const userSkills = await this.prisma.userSkill.findMany({
+        where: {
+          userId,
+          topicId: { in: lesson.topics.map(t => t.id) }
+        }
+      });
+
+      // Create a map of topicId -> mastery
+      const skillMap = userSkills.reduce((acc, skill) => {
+        acc[skill.topicId] = skill.mastery;
+        return acc;
+      }, {} as Record<number, number>);
+
+      // Calculate mastery and difficulty for each topic
+      const topicsWithMastery = lesson.topics.map(topic => ({
+        topicId: topic.id,
+        topicTitle: topic.title,
+        mastery: skillMap[topic.id] ?? 0.5, // Default 0.5 if no data
+        contentText: topic.contentText,
+        tags: topic.tags || []
+      }));
+
+      // Sort by mastery to find weakest topic
+      const sortedByMastery = [...topicsWithMastery].sort((a, b) => a.mastery - b.mastery);
+      const weakestTopicId = sortedByMastery[0].topicId;
+
+      console.log('Topic masteries:', topicsWithMastery.map(t => 
+        `${t.topicTitle}: ${Math.round(t.mastery * 100)}%`
+      ));
+      console.log(`Weakest topic: ${sortedByMastery[0].topicTitle}`);
+
+      // Distribute questions: 3 per topic, weakest gets 4 (bonus)
+      // Total: 3 + 3 + 4 = 10 questions
+      const topicsForPrompt = topicsWithMastery.map(topic => {
+        const isWeakest = topic.topicId === weakestTopicId;
+        const difficulty = getDifficultyFromMastery(topic.mastery);
+        
+        return {
+          topicId: topic.topicId,
+          topicTitle: topic.topicTitle,
+          mastery: topic.mastery,
+          difficulty,
+          questionCount: isWeakest ? 4 : 3, // Weakest gets bonus question
+          contentText: topic.contentText,
+          tags: topic.tags
+        };
+      });
+
+      const totalQuestions = topicsForPrompt.reduce((sum, t) => sum + t.questionCount, 0);
+      console.log(`Question distribution: ${topicsForPrompt.map(t => `${t.topicTitle}: ${t.questionCount} (${t.difficulty})`).join(', ')}`);
+      console.log(`Total questions: ${totalQuestions}`);
+
+      // Build the prompt context
+      const promptContext: LessonQuizContext = {
+        lessonId: lesson.id,
+        lessonTitle: lesson.title,
+        topics: topicsForPrompt,
+        totalQuestions
+      };
+
+      // Generate questions using AI
+      const prompt = buildLessonQuizPrompt(promptContext);
+      
+      const modelName = AI_CONFIG.modelName;
+      const temp = AI_CONFIG.temperature;
+      const topP = AI_CONFIG.topP;
+
+      console.log(`Generating ${totalQuestions} questions using ${modelName}...`);
+
+      const { text } = await generateText({
+        model: groq(modelName),
+        prompt,
+        temperature: temp,
+        topP: topP,
+      });
+
+      let questions = await this.extractJsonArray(text);
+
+      // Validate and clean questions
+      if (!Array.isArray(questions)) {
+        console.error('AI generated non-array response, retrying...');
+        const { text: retryText } = await generateText({
+          model: groq(modelName),
+          prompt,
+          temperature: Math.max(0.1, temp - 0.1),
+          topP: topP,
+        });
+        questions = await this.extractJsonArray(retryText);
+        
+        if (!Array.isArray(questions)) {
+          throw new Error('Failed to generate valid questions array');
+        }
+      }
+
+      // Process and validate each question
+      const validQuestions = questions.map((q: any, index: number) => {
+        // Ensure options exist and is an array
+        if (!Array.isArray(q.options) || q.options.length < 3) {
+          console.warn(`Question ${index + 1} has invalid options array`);
+          return null; // Mark for rejection
+        }
+
+        // Count correct answers
+        const correctOptions = q.options.filter((opt: any) => opt.isCorrect === true);
+        
+        if (correctOptions.length === 0) {
+          // No correct answer - try to use answerId to find one
+          if (q.answerId) {
+            const answerOption = q.options.find((opt: any) => opt.id === q.answerId);
+            if (answerOption) {
+              console.warn(`Question ${index + 1} has no isCorrect=true, setting from answerId`);
+              answerOption.isCorrect = true;
+            } else {
+              // Can't determine correct answer, mark first option as correct (fallback)
+              console.warn(`Question ${index + 1} has no correct answer and invalid answerId, marking first option`);
+              q.options[0].isCorrect = true;
+              q.answerId = q.options[0].id;
+            }
+          } else {
+            // No answerId either - reject this question
+            console.warn(`Question ${index + 1} has no correct answer and no answerId, rejecting`);
+            return null;
+          }
+        } else if (correctOptions.length > 1) {
+          // Multiple correct answers - keep only the first one
+          console.warn(`Question ${index + 1} has ${correctOptions.length} correct answers, keeping only first`);
+          let foundFirst = false;
+          q.options.forEach((opt: any) => {
+            if (opt.isCorrect === true) {
+              if (foundFirst) {
+                opt.isCorrect = false;
+              } else {
+                foundFirst = true;
+              }
+            }
+          });
+        }
+
+        // Ensure answerId matches the correct option
+        const finalCorrectOption = q.options.find((opt: any) => opt.isCorrect === true);
+        if (finalCorrectOption) {
+          q.answerId = finalCorrectOption.id;
+        } else {
+          // This shouldn't happen after the fixes above, but safety check
+          console.warn(`Question ${index + 1} still has no correct answer after fixes, rejecting`);
+          return null;
+        }
+
+        // Validate topicId belongs to this lesson
+        const validTopicIds = lesson.topics.map(t => t.id);
+        if (!validTopicIds.includes(q.topicId)) {
+          console.warn(`Question ${index + 1} has invalid topicId ${q.topicId}, assigning to first topic`);
+          q.topicId = lesson.topics[0].id;
+        }
+
+        // Ensure lessonId is correct
+        q.lessonId = lessonId;
+
+        // Filter tags to allowed values
+        q.tags = (q.tags || []).filter((tag: string) => this.allowedTags.includes(tag));
+
+        return {
+          ...q,
+          questionType: q.questionType || 'multiple-choice',
+          solutionSteps: q.solutionSteps || ['Analyze the problem', 'Apply relevant concepts', 'Verify the answer']
+        };
+      }).filter((q: any) => {
+        // Filter out null values (questions marked for rejection in map)
+        if (q === null) {
+          return false;
+        }
+        
+        // Validate question has required fields
+        if (!q.stem || !q.options || q.options.length < 3) {
+          console.warn('Rejecting question with missing stem or options');
+          return false;
+        }
+        
+        // Verify exactly one correct answer exists
+        const correctCount = q.options.filter((opt: any) => opt.isCorrect === true).length;
+        if (correctCount !== 1) {
+          console.warn(`Rejecting question with ${correctCount} correct answers (must be exactly 1)`);
+          return false;
+        }
+        
+        // Check for broken visuals
+        if (typeof q.stem === 'string') {
+          const lowerStem = q.stem.toLowerCase();
+          if (lowerStem.includes('table below') || 
+              lowerStem.includes('circuit below') || 
+              lowerStem.includes('map below')) {
+            console.warn('Rejecting question with broken visual reference');
+            return false;
+          }
+        }
+        
+        // Validate truth table variable count matches the number of input columns
+        if (typeof q.stem === 'object' && q.stem?.type === 'table' && q.stem?.table) {
+          const table = q.stem.table;
+          const headers = table.headers || [];
+          const inputColumns = headers.filter((h: string) => h.toUpperCase() !== 'Y' && h.toUpperCase() !== 'OUTPUT');
+          const rows = table.rows || [];
+          const expectedRows = Math.pow(2, inputColumns.length);
+          
+          // Check if row count matches expected (2^n for n input variables)
+          if (rows.length !== expectedRows) {
+            console.warn(`Rejecting truth table with ${rows.length} rows but ${inputColumns.length} inputs (expected ${expectedRows} rows)`);
+            return false;
+          }
+          
+          // Check for empty or invalid truth table
+          if (inputColumns.length < 1 || inputColumns.length > 4) {
+            console.warn(`Rejecting truth table with ${inputColumns.length} input columns (expected 1-4)`);
+            return false;
+          }
+        }
+        
+        return true;
+      });
+
+      console.log(`Generated ${validQuestions.length} valid questions out of ${questions.length}`);
+
+      if (validQuestions.length < 8) {
+        throw new Error(`Only ${validQuestions.length} valid questions generated, minimum 8 required`);
+      }
+
+      // Take exactly 10 questions (or all if less)
+      const finalQuestions = validQuestions.slice(0, 10);
+
+      // Calculate average mastery for the lesson
+      const averageMastery = topicsForPrompt.reduce((sum, t) => sum + t.mastery, 0) / topicsForPrompt.length;
+
+      // Save the attempt
+      const attempt = await this.prisma.attempt.create({
+        data: {
+          userId,
+          questions: finalQuestions,
+          performance: {
+            lessonId,
+            lessonTitle: lesson.title,
+            overallMastery: averageMastery, // Add overall mastery for display
+            recommendedDifficulty: getDifficultyFromMastery(averageMastery), // Add difficulty label
+            topicDistribution: topicsForPrompt.map(t => ({
+              topicId: t.topicId,
+              topicTitle: t.topicTitle,
+              mastery: t.mastery,
+              difficulty: t.difficulty,
+              questionCount: t.questionCount
+            }))
+          }
+        }
+      });
+
+      console.log(`Created attempt ${attempt.id} with ${finalQuestions.length} questions`);
+
+      return {
+        attemptId: attempt.id,
+        questions: finalQuestions,
+        lessonInfo: {
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          topicMasteries: topicsForPrompt.map(t => ({
+            topicId: t.topicId,
+            topicTitle: t.topicTitle,
+            mastery: t.mastery,
+            difficulty: t.difficulty,
+            questionCount: t.questionCount
+          }))
+        }
+      };
+    } catch (error) {
+      console.error('Error in startLessonPracticeAttempt:', error);
+      throw new Error(`Failed to start lesson practice: ${error.message}`);
     }
   }
 
