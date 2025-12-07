@@ -9,6 +9,8 @@ import { AssessmentModule } from './assessment/assessment.module';
 import { PrismaModule } from 'prisma/prisma.module';
 import { AdaptiveModule } from './adaptive/adaptive.module';
 import { UserProgressModule } from './user-progress/user-progress.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -26,5 +28,7 @@ import { UserProgressModule } from './user-progress/user-progress.module';
     AdaptiveModule,
     UserProgressModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

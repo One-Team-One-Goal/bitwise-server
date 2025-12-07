@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npx prisma generate && NODE_OPTIONS='--max-old-space-size=1024' nest build",
+    "build": "npm run prisma:generate && NODE_OPTIONS='--max-old-space-size=1024' nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "node --max-old-space-size=1024 dist/src/main.js",
     "start:dev": "nest start --watch",
@@ -18,7 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "db:seed": "ts-node prisma/seed.ts"
+    "db:seed": "ts-node prisma/seed.ts",
+    "prisma:generate": "prisma generate",
+    "postinstall": "npm run prisma:generate"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -26,6 +28,7 @@
   "dependencies": {
     "@ai-sdk/groq": "^2.0.14",
     "@fastify/static": "^8.2.0",
+    "@google/generative-ai": "^0.24.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -36,7 +39,7 @@
     "@prisma/client": "^6.15.0",
     "@supabase/supabase-js": "^2.55.0",
     "ai": "^5.0.23",
-    "axios": "^1.11.0",
+    "axios": "^1.13.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "nestjs-zod": "^5.0.0",

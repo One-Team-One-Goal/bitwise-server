@@ -5,36 +5,55 @@ import {
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+
   try {
     const app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
       new FastifyAdapter(),
+      { bufferLogs: true },
     );
 
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
+    const globalPrefix = process.env.GLOBAL_PREFIX ?? 'api';
+    app.setGlobalPrefix(globalPrefix);
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
+
+    app.enableShutdownHooks();
+
+    const allowedOrigins = [
+      process.env.FRONTEND_URL,
+      process.env.LOCALHOST_URL,
+      ...(process.env.CORS_ALLOWED_ORIGINS?.split(',') ?? []),
+    ]
+      .map((origin) => origin?.trim())
+      .filter((origin): origin is string => Boolean(origin?.length));
+
+    const allowLocalFallback = (origin?: string) =>
+      !!origin?.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/);
+
     app.enableCors({
       origin: (origin, callback) => {
-        if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        if (!origin || allowLocalFallback(origin) || allowedOrigins.includes(origin)) {
           return callback(null, true);
         }
-        const allowedOrigins = [
-          process.env.FRONTEND_URL,
-          process.env.LOCALHOST_URL,
-        ].filter(Boolean);
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-        return callback(new Error('Cors not allowed for this origin'), false);
+        return callback(new Error(`Cors not allowed for origin: ${origin}`), false);
       },
       credentials: true,
-      methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     });
 
-    const enableSwagger = process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true';
+    const enableSwagger =
+      process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true';
 
     if (enableSwagger) {
       const config = new DocumentBuilder()
@@ -45,19 +64,21 @@ async function bootstrap() {
         .build();
 
       const documentFactory = () => SwaggerModule.createDocument(app, config);
-      SwaggerModule.setup('bitwise-api', app, documentFactory, { yamlDocumentUrl: '/bitwise-api/bitwise-api.yaml' });
-      console.log('Swagger enabled at /bitwise-api');
+      SwaggerModule.setup('bitwise-api', app, documentFactory, {
+        yamlDocumentUrl: '/bitwise-api/bitwise-api.yaml',
+      });
+      logger.log('Swagger enabled at /bitwise-api');
     } else {
-      console.log('Swagger disabled (production)');
+      logger.log('Swagger disabled (production)');
     }
 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-    const host = '0.0.0.0';
+    const host = process.env.HOST ?? '0.0.0.0';
 
-    await app.listen(port, host);
-    console.log(`Listening on ${host}:${port} (env=${process.env.NODE_ENV || 'unknown'})`);
+    await app.listen({ port, host });
+    logger.log(`Listening on ${host}:${port} (env=${process.env.NODE_ENV || 'unknown'})`);
   } catch (err) {
-    console.error('Failed to bootstrap app:', err);
+    logger.error('Failed to bootstrap app', err instanceof Error ? err.stack : undefined);
     process.exit(1);
   }
 }

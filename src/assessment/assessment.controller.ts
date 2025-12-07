@@ -41,6 +41,46 @@ export class AssessmentController {
   }
 
   /**
+   * Start a lesson-specific practice assessment
+   * POST /api/assessment/start-lesson-practice
+   * 
+   * This generates a focused 10-question quiz for a single lesson.
+   * Questions have topic-specific difficulty based on user's mastery.
+   */
+  @Post('start-lesson-practice')
+  async startLessonPractice(@Body() body: { uid: string; lessonId: number }) {
+    try {
+      if (!body.lessonId || body.lessonId < 1 || body.lessonId > 4) {
+        return {
+          success: false,
+          error: 'Invalid lessonId. Must be 1, 2, 3, or 4.'
+        };
+      }
+
+      const result = await this.assessmentService.startLessonPracticeAttempt(body.uid, body.lessonId);
+      
+      if (!result.questions || !Array.isArray(result.questions)) {
+        console.error('Result questions is not an array:', result.questions);
+        return {
+          success: false,
+          error: 'Failed to generate valid assessment questions. Please try again.'
+        };
+      }
+      
+      return {
+        success: true,
+        data: result
+      };
+    } catch (error) {
+      console.error('Error in startLessonPractice controller:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to start lesson practice. Please try again.'
+      };
+    }
+  }
+
+  /**
    * Submit an adaptive practice assessment
    * POST /api/assessment/submit-adaptive-practice
    */
