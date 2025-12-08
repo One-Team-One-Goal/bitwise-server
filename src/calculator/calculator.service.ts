@@ -96,6 +96,9 @@ export class CalculatorService {
           this.toString = function() {
             return "T";
           }
+          this.toStringInner = function() {
+            return "T";
+          }
           this.equals = function(object) {
             return object == this;
           }
@@ -109,6 +112,9 @@ export class CalculatorService {
 
         const False = new function() {
           this.toString = function() {
+            return "F";
+          }
+          this.toStringInner = function() {
             return "F";
           }
           this.equals = function(object) {
@@ -128,6 +134,9 @@ export class CalculatorService {
         Variable.prototype.toString = function() {
           return this.variableName;
         }
+        Variable.prototype.toStringInner = function() {
+          return this.variableName;
+        }
         Variable.prototype.equals = function(object) {
           if (!(object instanceof Variable)) {
             return false;
@@ -142,11 +151,43 @@ export class CalculatorService {
           return exp instanceof Variable;
         }
 
+        // Helper to check if an expression needs parentheses based on context
+        function needsParens(child, parent) {
+          // Variables, True, False, and NOT expressions don't need parens
+          if (child instanceof Variable || child === True || child === False) {
+            return false;
+          }
+          if (child instanceof NotExpression) {
+            return false;
+          }
+          // If no parent, we're at the top level - no parens needed
+          if (!parent) {
+            return false;
+          }
+          // AND inside OR needs parens (lower precedence)
+          if (child instanceof AndExpression && parent instanceof OrExpression) {
+            return true;
+          }
+          // OR inside AND needs parens (for clarity)
+          if (child instanceof OrExpression && parent instanceof AndExpression) {
+            return true;
+          }
+          return false;
+        }
+
         function NotExpression(subs) {
           this.subs = subs;
         }
-        NotExpression.prototype.toString = function() {
-          return SYMBOL.NOT + this.subs[0];
+        NotExpression.prototype.toString = function(parent) {
+          var inner = this.subs[0];
+          // NOT of compound expressions needs parens around the inner part
+          if (inner instanceof AndExpression || inner instanceof OrExpression) {
+            return SYMBOL.NOT + "(" + inner.toStringInner() + ")";
+          }
+          return SYMBOL.NOT + inner.toString(this);
+        };
+        NotExpression.prototype.toStringInner = function() {
+          return this.toString(null);
         };
         NotExpression.prototype.equals = function(object) {
           if (!(object instanceof NotExpression)) {
@@ -162,8 +203,25 @@ export class CalculatorService {
           this.subs = subs;
         }
 
-        OrExpression.prototype.toString = function() {
-          return Utils.parenthesize(Utils.arrayToString(this.subs, " " + SYMBOL.OR + " "));
+        OrExpression.prototype.toString = function(parent) {
+          var inner = this.toStringInner();
+          // Only add parens if inside an AND expression
+          if (parent instanceof AndExpression) {
+            return "(" + inner + ")";
+          }
+          return inner;
+        }
+        OrExpression.prototype.toStringInner = function() {
+          var parts = [];
+          for (var i = 0; i < this.subs.length; i++) {
+            var sub = this.subs[i];
+            if (sub.toString) {
+              parts.push(sub.toString(this));
+            } else {
+              parts.push(sub.toString());
+            }
+          }
+          return parts.join(" " + SYMBOL.OR + " ");
         }
         OrExpression.prototype.contains = function(object) {
           if (!(object instanceof OrExpression)) {
@@ -231,8 +289,25 @@ export class CalculatorService {
           this.subs = subs;
         }
 
-        AndExpression.prototype.toString = function() {
-          return Utils.parenthesize(Utils.arrayToString(this.subs, " " + SYMBOL.AND + " "));
+        AndExpression.prototype.toString = function(parent) {
+          var inner = this.toStringInner();
+          // Only add parens if inside an OR expression (AND has higher precedence)
+          if (parent instanceof OrExpression) {
+            return "(" + inner + ")";
+          }
+          return inner;
+        }
+        AndExpression.prototype.toStringInner = function() {
+          var parts = [];
+          for (var i = 0; i < this.subs.length; i++) {
+            var sub = this.subs[i];
+            if (sub.toString) {
+              parts.push(sub.toString(this));
+            } else {
+              parts.push(sub.toString());
+            }
+          }
+          return parts.join(" " + SYMBOL.AND + " ");
         }
         AndExpression.prototype.contains = function(object) {
           if (!(object instanceof AndExpression)) {
@@ -1173,7 +1248,10 @@ export class CalculatorService {
           universalBound: "Universal Bound",
           deMorgans: "De Morgan's",
           absorption: "Absorption",
-          negationsOfTF: "Negations of T and F"
+          negationsOfTF: "Negations of T and F",
+          XOR: "XOR Definition",
+          IMP: "Implication Definition",
+          BIMP: "Biconditional Definition"
         };
         const shortDict = {
           commutative: "COM",
@@ -1186,7 +1264,10 @@ export class CalculatorService {
           universalBound: "UB",
           deMorgans: "DM",
           absorption: "ABS",
-          negationsOfTF: "NTF"
+          negationsOfTF: "NTF",
+          XOR: "XOR",
+          IMP: "IMP",
+          BIMP: "BIMP"
         };
 
         function getLawName(lawFunction, useShort = Settings.getValue("short")) {
@@ -1347,11 +1428,29 @@ export class CalculatorService {
           VariableManager.clear();
           var parsed = Parser.parse(expr);
           var steps = Equivalency.simplify(parsed);
+          
+          // Check if original expression contained XOR, IF, or IFF that got converted
+          var hasXOR = expr.includes(SYMBOL.XOR) || /\bxor\b/i.test(expr);
+          var hasIF = expr.includes(SYMBOL.IF) || /->/g.test(expr) || /\bthen\b/i.test(expr);
+          var hasIFF = expr.includes(SYMBOL.IFF) || /<->/g.test(expr);
+          
+          // Add conversion steps at the beginning if needed
+          var conversionSteps = [];
+          if (hasXOR || hasIF || hasIFF) {
+            // The first step after parsing shows the converted form
+            var conversionLaw = hasXOR ? "XOR" : (hasIF ? "IMP" : "BIMP");
+            conversionSteps.push({
+              expression: parsed.toString(),
+              law: "by " + conversionLaw,
+              lawName: conversionLaw
+            });
+          }
+          
           // Return previous shape but also allow frontend to request AST tokenization via annotate/tokenize helpers
           return {
             originalExpression: expr,
             simplifiedExpression: steps[steps.length - 1].result,
-            steps: steps
+            steps: conversionSteps.concat(steps
               .filter(function(s) { return s.lawString !== 'result'; })
               .map(function(step) {
                 return {
@@ -1359,10 +1458,10 @@ export class CalculatorService {
                   law: step.lawString,
                   lawName: step.lawString.replace('by ', '')
                 };
-              }),
-            stepLines: steps
+              })),
+            stepLines: (hasXOR || hasIF || hasIFF ? [parsed.toString() + "by " + (hasXOR ? "XOR" : (hasIF ? "IMP" : "BIMP"))] : []).concat(steps
               .filter(function(s) { return s.lawString !== 'result'; })
-              .map(function(step) { return step.result + step.lawString; })
+              .map(function(step) { return step.result + step.lawString; }))
           };
         };
 
