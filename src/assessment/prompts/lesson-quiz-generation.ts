@@ -53,13 +53,14 @@ function getLessonGuidelines(lessonId: number): string {
 - Limit truth tables to 2 questions max; prefer circuits`,
 
     3: `**LESSON 3: Truth Tables**
-- Focus: Constructing, reading, and analyzing truth tables for expressions
-- Question Types: **TRUTH TABLES AND ALGEBRAIC EXPRESSIONS**
+- Focus: Reading and analyzing truth tables to derive expressions
+- Question Types: **TRUTH TABLES AND ALGEBRAIC EXPRESSIONS** (READ ONLY - DO NOT ASK TO CONSTRUCT)
 - Visual Requirement: 60-70% (truth tables are the focus)
-- EASY: Read output from a simple 2-variable table
-- MEDIUM: Construct or verify a 3-variable truth table
-- HARD: Derive expressions from complex tables, find equivalences
-- Use tables to test expression evaluation skills`,
+- EASY: Read output from a simple 2-variable table, identify the expression
+- MEDIUM: Analyze a 3-variable truth table to find the equivalent Boolean expression
+- HARD: Derive minimal expressions from complex tables, find logical equivalences
+- **CRITICAL**: Always provide the truth table in the question. Ask students to READ/ANALYZE it, NOT to construct it
+- Example: "Given the truth table below, which expression represents the output Y?"`,
 
     4: `**LESSON 4: Simplification & K-Maps**
 - Focus: Boolean laws, Karnaugh maps, SOP/POS optimization
@@ -100,6 +101,7 @@ export function buildLessonQuizPrompt(context: LessonQuizContext): string {
 - Clear, unambiguous scenarios
 - 2-variable expressions (A, B) → truth tables have 4 rows
 - Confidence-building questions
+- **solutionSteps**: 2-3 clear, simple steps showing the basic process
 
 **MEDIUM Questions** (for mastery 40-69%):
 - Multi-step reasoning required
@@ -107,13 +109,15 @@ export function buildLessonQuizPrompt(context: LessonQuizContext): string {
 - 3-variable expressions (A, B, C) → truth tables have 8 rows
 - **The expression MUST use all 3 variables!** (e.g., Y = A'B + C, NOT Y = A' + B')
 - Requires connecting concepts
+- **solutionSteps**: 3-5 detailed steps showing intermediate calculations and reasoning
 
 **HARD Questions** (for mastery ≥ 70%):
 - Complex multi-step problems
 - Synthesis of multiple concepts
 - 3-4 variable expressions → truth tables have 8-16 rows
 - **The expression MUST use all 3-4 variables!**
-- Optimization and edge cases`;
+- Optimization and edge cases
+- **solutionSteps**: 5-7 comprehensive steps with full mathematical derivations`;
 
   return `
 You are a distinguished University Professor of Digital Logic and Boolean Algebra. Your task is to generate a focused, high-quality **10-question** assessment for a single lesson.
@@ -160,13 +164,61 @@ ${difficultyGuidelines}
 {
   "type": "circuit",
   "circuit": {
-    "inputs": ["A", "B"],
+    "inputs": ["A", "B", "C"],  // List all input variables
     "gates": [
-      {"id": "G1", "type": "AND", "inputs": ["A", "B"], "output": "X"},
-      {"id": "G2", "type": "NOT", "inputs": ["X"], "output": "Y"}
+      {
+        "id": "G1",
+        "type": "NOT",           // Gate types: NOT, AND, OR, NAND, NOR, XOR, XNOR
+        "inputs": ["A"],         // Input(s) - can be input variables or outputs from other gates
+        "output": "A_NOT",       // Unique identifier for this gate's output
+        "position": {"x": 1, "y": 1}  // Grid position for layout (x=column, y=row)
+      },
+      {
+        "id": "G2",
+        "type": "AND",
+        "inputs": ["A_NOT", "B"],  // Uses output from G1 and input B
+        "output": "G2_OUT",
+        "position": {"x": 2, "y": 1}
+      },
+      {
+        "id": "G3",
+        "type": "OR",
+        "inputs": ["G2_OUT", "C"],  // Uses output from G2 and input C
+        "output": "Y",              // Final output
+        "position": {"x": 3, "y": 1}
+      }
+    ],
+    "finalOutput": "Y",           // Must match the output of the last gate
+    "caption": "Analyze the circuit to determine the Boolean expression for Y"
+  }
+}
+
+**CIRCUIT DIAGRAM RULES:**
+- **Gate Order**: Gates MUST be listed in topological order (dependencies first)
+- **Input References**: Each gate's "inputs" array references either:
+  - Original input variables (A, B, C, etc.)
+  - Output identifiers from previous gates (e.g., "A_NOT", "G2_OUT")
+- **Output Naming**: Use descriptive names like "A_NOT" for NOT gates, "G2_OUT" for intermediate outputs
+- **Position Grid**: x=column (left to right), y=row (top to bottom). Space gates appropriately
+- **Final Output**: Must be the output of the last gate in the signal path
+- **Complexity Levels**:
+  - EASY: 1-2 gates, single path (e.g., NOT→AND or just AND)
+  - MEDIUM: 2-3 gates, may have parallel paths converging
+  - HARD: 3-5 gates, multiple levels, parallel paths, requires careful tracing
+
+**Example HARD Circuit** (3-variable, 4 gates):
+{
+  "type": "circuit",
+  "circuit": {
+    "inputs": ["A", "B", "C"],
+    "gates": [
+      {"id": "G1", "type": "NOT", "inputs": ["A"], "output": "A_NOT", "position": {"x": 1, "y": 0}},
+      {"id": "G2", "type": "NOT", "inputs": ["B"], "output": "B_NOT", "position": {"x": 1, "y": 2}},
+      {"id": "G3", "type": "AND", "inputs": ["A_NOT", "C"], "output": "G3_OUT", "position": {"x": 2, "y": 0}},
+      {"id": "G4", "type": "OR", "inputs": ["G3_OUT", "B_NOT"], "output": "Y", "position": {"x": 3, "y": 1}}
     ],
     "finalOutput": "Y",
-    "caption": "Determine the output expression"
+    "caption": "Determine the Boolean expression: Y = (A'·C) + B'"
   }
 }
 
@@ -198,17 +250,86 @@ Return ONLY a valid JSON array. No markdown, no text before/after.
     "stem": "<string OR visual object>",
     "questionType": "multiple-choice",
     "tags": ["<valid-tags-from-topic>"],
-    "_reasoning": "Step-by-step verification of the correct answer",
+    "_reasoning": "Internal verification of the correct answer (not shown to user)",
     "options": [
-      {"id": "opt_a", "text": "Option A", "isCorrect": false, "explanation": "Why wrong"},
-      {"id": "opt_b", "text": "Option B", "isCorrect": true, "explanation": "Why correct"},
-      {"id": "opt_c", "text": "Option C", "isCorrect": false, "explanation": "Why wrong"},
-      {"id": "opt_d", "text": "Option D", "isCorrect": false, "explanation": "Why wrong"}
+      {
+        "id": "opt_a", 
+        "text": "Option A", 
+        "isCorrect": false, 
+        "rationale": "Detailed explanation why this is WRONG. Point out the specific error or misconception."
+      },
+      {
+        "id": "opt_b", 
+        "text": "Option B", 
+        "isCorrect": true, 
+        "rationale": "Comprehensive explanation why this is CORRECT. Justify with mathematical reasoning, show verification, and connect to concepts."
+      },
+      {
+        "id": "opt_c", 
+        "text": "Option C", 
+        "isCorrect": false, 
+        "rationale": "Detailed explanation why this is WRONG. Identify the mistake made."
+      },
+      {
+        "id": "opt_d", 
+        "text": "Option D", 
+        "isCorrect": false, 
+        "rationale": "Detailed explanation why this is WRONG. Clarify the misconception."
+      }
     ],
     "answerId": "opt_b",
-    "solutionSteps": ["Step 1...", "Step 2...", "Step 3..."]
+    "solutionSteps": [
+      "Step 1: [For Lessons 2-4] Begin with the given information or expression. State what we're solving for.",
+      "Step 2: Show the first calculation or transformation. Be specific with values.",
+      "Step 3: Continue with intermediate steps. Show ALL work, don't skip steps.",
+      "Step 4: Apply relevant rules/laws/techniques (name them explicitly).",
+      "Step 5: [If needed] Verify the result by substitution or alternative method.",
+      "Final Step: State the answer clearly and connect it back to the question."
+    ]
   }
 ]
+
+⚠️ **CRITICAL REQUIREMENTS FOR solutionSteps AND rationale:**
+
+**For solutionSteps (Lessons 2, 3, 4 - PROBLEM SOLVING):**
+- **LESSON 2 (Logic Gates)**: 
+  - Step 1: Identify the gate types and inputs
+  - Step 2: Trace signal through first gate with specific values
+  - Step 3: Show intermediate outputs
+  - Step 4: Trace through subsequent gates
+  - Step 5: Derive final expression or output
+  - Example: "Apply NOT to A (1) → A' = 0", "AND gate: A'(0) AND B(1) = 0"
+
+- **LESSON 3 (Truth Tables)**:
+  - Step 1: Examine the provided truth table and identify the pattern
+  - Step 2: Look at rows where output Y = 1 (identify minterms)
+  - Step 3: Write the expression for each minterm (e.g., A'B'C for row where A=0, B=0, C=1 gives Y=1)
+  - Step 4: Combine minterms with OR operations to form Sum of Products (SOP)
+  - Step 5: Simplify if possible using Boolean laws
+  - Step 6: Verify by checking the expression against the table
+  - Example: "Rows with Y=1: [0,0,0], [0,1,1] → Minterms: A'B'C' + A'BC → Expression found"
+
+- **LESSON 4 (Simplification & K-Maps)**:
+  - Step 1: Write the original expression
+  - Step 2: Identify groupings in K-map or applicable Boolean law
+  - Step 3: Apply law/grouping (show explicitly: A + A'B = A + B by Absorption)
+  - Step 4: Continue simplification with next law
+  - Step 5: Verify by truth table or expansion
+  - Example: "Group cells [1,3]: A'B' + A'B = A'(B'+B) = A'(1) = A'"
+
+- **LESSON 1**: Can use simpler steps (2-3 steps) for conceptual questions
+
+**For rationale (ALL OPTIONS):**
+- **Correct option**: 3-4 sentences minimum
+  - Sentence 1: State why it's correct
+  - Sentence 2: Show mathematical verification
+  - Sentence 3: Connect to underlying concept/rule
+  - Sentence 4: Optional - relate to common applications
+
+- **Incorrect options**: 2-3 sentences minimum
+  - Sentence 1: Identify the specific error or misconception
+  - Sentence 2: Explain what would be needed for this to be correct
+  - Sentence 3: Optional - show correct calculation for comparison
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ LOGIC VERIFICATION (MANDATORY)

@@ -85,130 +85,7 @@ export class AssessmentService {
     }
   }
 
-  private generateAttemptFeedback(questions: any[], responses: any): {
-    attemptFeedback: string;
-    weakestTags: string[];
-    strongestTags: string[];
-    topicBreakdown: any[];
-    recommendations: string[];
-  } {
-    // Analyze performance by tags
-    const tagPerformance: Record<string, { correct: number; total: number }> = {};
-    const topicPerformance: Record<number, { correct: number; total: number; title: string }> = {};
-    
-    questions.forEach((q, idx) => {
-      const answer = responses[q.id ?? idx];
-      const isCorrect = q.options.find((o: any) => o.id === answer && o.isCorrect);
-      
-      // Track by tags
-      if (q.tags && Array.isArray(q.tags)) {
-        q.tags.forEach((tag: string) => {
-          if (!tagPerformance[tag]) {
-            tagPerformance[tag] = { correct: 0, total: 0 };
-          }
-          tagPerformance[tag].total += 1;
-          if (isCorrect) {
-            tagPerformance[tag].correct += 1;
-          }
-        });
-      }
-      
-      // Track by topic
-      if (!topicPerformance[q.topicId]) {
-        topicPerformance[q.topicId] = { 
-          correct: 0, 
-          total: 0, 
-          title: `Topic ${q.topicId}` // You might want to get actual topic title
-        };
-      }
-      topicPerformance[q.topicId].total += 1;
-      if (isCorrect) {
-        topicPerformance[q.topicId].correct += 1;
-      }
-    });
 
-    // Calculate percentages and find weak/strong areas
-    const tagResults = Object.entries(tagPerformance).map(([tag, perf]) => ({
-      tag,
-      percentage: perf.total > 0 ? (perf.correct / perf.total) * 100 : 0,
-      correct: perf.correct,
-      total: perf.total
-    }));
-
-    const weakestTags = tagResults
-      .filter(t => t.total >= 2) // Only consider tags with at least 2 questions
-      .sort((a, b) => a.percentage - b.percentage)
-      .slice(0, 3)
-      .map(t => t.tag);
-
-    const strongestTags = tagResults
-      .filter(t => t.total >= 2 && t.percentage >= 80)
-      .sort((a, b) => b.percentage - a.percentage)
-      .slice(0, 3)
-      .map(t => t.tag);
-
-    const topicBreakdown = Object.entries(topicPerformance).map(([topicId, perf]) => ({
-      topicId: parseInt(topicId),
-      title: perf.title,
-      correct: perf.correct,
-      total: perf.total,
-      percentage: perf.total > 0 ? Math.round((perf.correct / perf.total) * 100) : 0
-    }));
-
-    // Generate contextual feedback
-    let attemptFeedback = '';
-    const totalQuestions = questions.length;
-    const totalCorrect = Object.values(topicPerformance).reduce((sum, perf) => sum + perf.correct, 0);
-    const overallPercentage = Math.round((totalCorrect / totalQuestions) * 100);
-
-    // Overall performance feedback
-    if (overallPercentage >= 90) {
-      attemptFeedback = `Outstanding performance! You scored ${overallPercentage}% on this assessment. `;
-    } else if (overallPercentage >= 80) {
-      attemptFeedback = `Great job! You scored ${overallPercentage}% on this assessment. `;
-    } else if (overallPercentage >= 70) {
-      attemptFeedback = `Good work! You scored ${overallPercentage}% on this assessment. `;
-    } else if (overallPercentage >= 60) {
-      attemptFeedback = `You scored ${overallPercentage}% on this assessment. There's room for improvement. `;
-    } else {
-      attemptFeedback = `You scored ${overallPercentage}% on this assessment. Let's focus on strengthening your understanding. `;
-    }
-
-    // Specific area feedback
-    const recommendations: string[] = [];
-    
-    if (weakestTags.length > 0) {
-      const weakAreas = this.formatTagsForFeedback(weakestTags);
-      attemptFeedback += `Your weakest areas in this assessment were: ${weakAreas}. `;
-      
-      // Add specific recommendations based on weak tags
-      weakestTags.forEach(tag => {
-        const recommendation = this.getTagRecommendation(tag);
-        if (recommendation) {
-          recommendations.push(recommendation);
-        }
-      });
-    }
-
-    if (strongestTags.length > 0) {
-      const strongAreas = this.formatTagsForFeedback(strongestTags);
-      attemptFeedback += `You performed excellently in: ${strongAreas}. `;
-    }
-
-    // Add study recommendations
-    if (recommendations.length === 0 && overallPercentage < 80) {
-      recommendations.push("Review the fundamental concepts before attempting another assessment.");
-      recommendations.push("Practice more problems in your weak areas.");
-    }
-
-    return {
-      attemptFeedback,
-      weakestTags,
-      strongestTags,
-      topicBreakdown,
-      recommendations
-    };
-  }
 
 /**
  * Format tags for user-friendly display
@@ -243,16 +120,37 @@ private formatTagsForFeedback(tags: string[]): string {
 private getTagRecommendation(tag: string): string | null {
   const recommendations: Record<string, string> = {
     'karnaugh-maps': 'Practice more Karnaugh map simplification problems and review grouping techniques.',
+    'Karnaugh Maps': 'Practice more Karnaugh map simplification problems and review grouping techniques.',
     'truth-table-construction': 'Focus on building truth tables step by step for different logic gates.',
+    'Truth Table Construction': 'Focus on building truth tables step by step for different logic gates.',
     'truth-table-reading': 'Practice interpreting truth tables and understanding input-output relationships.',
+    'Truth Table Reading': 'Practice interpreting truth tables and understanding input-output relationships.',
+    'truth-table-for-gates': 'Practice creating truth tables for various logic gates.',
+    'Truth Tables for Gates': 'Practice creating truth tables for various logic gates.',
     'simplification': 'Review Boolean algebra laws and practice simplifying complex expressions.',
+    'Simplification': 'Review Boolean algebra laws and practice simplifying complex expressions.',
     'and-gate': 'Review AND gate behavior: output is 1 only when ALL inputs are 1.',
+    'AND Gate': 'Review AND gate behavior: output is 1 only when ALL inputs are 1.',
     'or-gate': 'Review OR gate behavior: output is 1 when ANY input is 1.',
+    'OR Gate': 'Review OR gate behavior: output is 1 when ANY input is 1.',
     'not-gate': 'Review NOT gate behavior: output is the inverse of the input.',
+    'NOT Gate': 'Review NOT gate behavior: output is the inverse of the input.',
     'nand-gate': 'Remember NAND is NOT-AND: output is 0 only when ALL inputs are 1.',
+    'NAND Gate': 'Remember NAND is NOT-AND: output is 0 only when ALL inputs are 1.',
     'nor-gate': 'Remember NOR is NOT-OR: output is 1 only when ALL inputs are 0.',
+    'NOR Gate': 'Remember NOR is NOT-OR: output is 1 only when ALL inputs are 0.',
     'xor-gate': 'Practice XOR logic: output is 1 when inputs are different.',
+    'XOR Gate': 'Practice XOR logic: output is 1 when inputs are different.',
+    'xnor-gate': 'Practice XNOR logic: output is 1 when inputs are the same.',
+    'XNOR Gate': 'Practice XNOR logic: output is 1 when inputs are the same.',
     'distributive-law': 'Review distributive law: A(B+C) = AB+AC and A+BC = (A+B)(A+C).',
+    'Boolean Laws': 'Review all Boolean algebra laws and their applications.',
+    'boolean-values': 'Review the fundamental concepts of Boolean values (0 and 1, true and false).',
+    'Boolean Values': 'Review the fundamental concepts of Boolean values (0 and 1, true and false).',
+    'intro': 'Review the introduction to Boolean algebra and its applications.',
+    'Introduction': 'Review the introduction to Boolean algebra and its applications.',
+    'applications': 'Study real-world applications of Boolean algebra in digital circuits.',
+    'Applications': 'Study real-world applications of Boolean algebra in digital circuits.',
     // Add more recommendations
   };
 
@@ -988,10 +886,7 @@ private async calculateDifficultyProgression(userId: string): Promise<{
 
     const questions = attempt.questions as any[];
     
-    // Generate attempt-specific feedback
-    const attemptAnalysis = this.generateAttemptFeedback(questions, responses);
-    
-    // Calculate performance by topic (existing code)
+    // Calculate performance by topic FIRST
     const topicPerformance: Record<number, { correct: number; total: number; difficulty: string }> = {};
     
     questions.forEach((q, idx) => {
@@ -1007,6 +902,126 @@ private async calculateDifficultyProgression(userId: string): Promise<{
         topicPerformance[q.topicId].correct += 1;
       }
     });
+
+    // Fetch topic titles from database for feedback
+    const topicIds = Object.keys(topicPerformance).map(id => parseInt(id));
+    const topics = await this.prisma.topic.findMany({
+      where: { id: { in: topicIds } },
+      select: { id: true, title: true }
+    });
+    
+    const topicTitleMap = topics.reduce((acc, topic) => {
+      acc[topic.id] = topic.title;
+      return acc;
+    }, {} as Record<number, string>);
+
+    // Calculate percentages for each topic
+    const analysisResults = Object.entries(topicPerformance).map(([topicId, perf]) => ({
+      topicId: parseInt(topicId),
+      title: topicTitleMap[parseInt(topicId)] || `Topic ${topicId}`,
+      percentage: perf.total > 0 ? (perf.correct / perf.total) * 100 : 0,
+      correct: perf.correct,
+      total: perf.total
+    }));
+
+    // Calculate overall percentage
+    const totalCorrect = analysisResults.reduce((sum, t) => sum + t.correct, 0);
+    const overallPercentage = Math.round((totalCorrect / questions.length) * 100);
+
+    // Weak threshold: ≤50% - return topic IDs
+    const weakestTopics = Object.entries(topicPerformance)
+      .filter(([_, perf]) => perf.total > 0 && (perf.correct / perf.total) * 100 <= 50)
+      .sort((a, b) => {
+        const percentA = (a[1].correct / a[1].total) * 100;
+        const percentB = (b[1].correct / b[1].total) * 100;
+        return percentA - percentB;
+      })
+      .slice(0, 3)
+      .map(([topicId, _]) => parseInt(topicId));
+
+    // Strong threshold: 75%-100% - return topic IDs
+    let strongestTopics: number[];
+    
+    if (overallPercentage === 100) {
+      // Perfect score - show all topics
+      strongestTopics = Object.entries(topicPerformance)
+        .filter(([_, perf]) => perf.total > 0)
+        .map(([topicId, _]) => parseInt(topicId));
+    } else {
+      // Include topics with 75%-100% performance
+      strongestTopics = Object.entries(topicPerformance)
+        .filter(([_, perf]) => perf.total > 0 && (perf.correct / perf.total) * 100 >= 75)
+        .sort((a, b) => {
+          const percentA = (a[1].correct / a[1].total) * 100;
+          const percentB = (b[1].correct / b[1].total) * 100;
+          return percentB - percentA;
+        })
+        .map(([topicId, _]) => parseInt(topicId));
+    }
+
+    // Generate contextual feedback
+    let attemptFeedback = '';
+
+    // Overall performance feedback
+    if (overallPercentage === 100) {
+      attemptFeedback = `Perfect score! You scored ${overallPercentage}% on this assessment. Excellent mastery of all topics covered! `;
+    } else if (overallPercentage >= 90) {
+      attemptFeedback = `Outstanding performance! You scored ${overallPercentage}% on this assessment. `;
+    } else if (overallPercentage >= 80) {
+      attemptFeedback = `Great job! You scored ${overallPercentage}% on this assessment. `;
+    } else if (overallPercentage >= 70) {
+      attemptFeedback = `Good work! You scored ${overallPercentage}% on this assessment. `;
+    } else if (overallPercentage >= 60) {
+      attemptFeedback = `You scored ${overallPercentage}% on this assessment. There's room for improvement. `;
+    } else {
+      attemptFeedback = `You scored ${overallPercentage}% on this assessment. Let's focus on strengthening your understanding. `;
+    }
+
+    // Generate recommendations
+    const recommendations: string[] = [];
+    
+    // Map topic IDs to titles for feedback
+    const weakTopicTitles = weakestTopics.map(topicId => 
+      topicTitleMap[topicId] || `Topic ${topicId}`
+    );
+    const strongTopicTitles = strongestTopics.map(topicId => 
+      topicTitleMap[topicId] || `Topic ${topicId}`
+    );
+    
+    // Only show weak areas if there are any (not 100% score)
+    if (weakestTopics.length > 0 && overallPercentage < 100) {
+      const weakAreas = this.formatTagsForFeedback(weakTopicTitles);
+      attemptFeedback += `Your weakest areas in this assessment were: ${weakAreas}. `;
+      
+      // Add specific recommendations based on weak topics
+      weakTopicTitles.forEach(title => {
+        const recommendation = this.getTagRecommendation(title);
+        if (recommendation) {
+          recommendations.push(recommendation);
+        }
+      });
+    }
+
+    if (strongestTopics.length > 0) {
+      const strongAreas = this.formatTagsForFeedback(strongTopicTitles);
+      if (overallPercentage === 100) {
+        attemptFeedback += `You mastered all topics in this assessment: ${strongAreas}. `;
+      } else {
+        attemptFeedback += `You performed excellently in: ${strongAreas}. `;
+      }
+    }
+
+    // Add study recommendations
+    if (recommendations.length === 0 && overallPercentage < 80) {
+      recommendations.push("Review the fundamental concepts before attempting another assessment.");
+      recommendations.push("Practice more problems in your weak areas.");
+    }
+
+    // For perfect scores, add congratulatory message
+    if (overallPercentage === 100) {
+      recommendations.push("Outstanding work! You've demonstrated complete mastery of this assessment.");
+      recommendations.push("Consider trying a more challenging difficulty level or exploring advanced topics.");
+    }
 
     // Convert to performance data format
     const performanceData = Object.entries(topicPerformance).map(([topicId, perf]) => ({
@@ -1052,6 +1067,7 @@ private async calculateDifficultyProgression(userId: string): Promise<{
       );
     }
 
+
     // Save responses, score, and BOTH feedbacks
     await this.prisma.attempt.update({
       where: { id: attemptId },
@@ -1061,7 +1077,12 @@ private async calculateDifficultyProgression(userId: string): Promise<{
         feedback: adaptiveFeedback, // Long-term adaptive feedback
         performance: {
           ...topicPerformance,
-          attemptAnalysis // Add attempt-specific analysis
+          attemptAnalysis: {
+            weakestTopics: weakestTopics, // Topic IDs
+            strongestTopics: strongestTopics, // Topic IDs
+            attemptFeedback: attemptFeedback,
+            recommendations: recommendations
+          }
         },
       },
     });
@@ -1070,7 +1091,7 @@ private async calculateDifficultyProgression(userId: string): Promise<{
     const updatedProgression = await this.calculateDifficultyProgression(attempt.userId);
     
     // Add progression feedback to attempt feedback
-    let enhancedFeedback = attemptAnalysis.attemptFeedback;
+    let enhancedFeedback = attemptFeedback;
     if (updatedProgression.progressionStatus) {
       enhancedFeedback += ` ${updatedProgression.progressionStatus}`;
     }
@@ -1079,11 +1100,10 @@ private async calculateDifficultyProgression(userId: string): Promise<{
       score, 
       feedback: adaptiveFeedback, // Long-term feedback
       attemptFeedback: enhancedFeedback, // Enhanced with progression feedback
-      weakestAreas: attemptAnalysis.weakestTags,
-      strongestAreas: attemptAnalysis.strongestTags,
-      recommendations: attemptAnalysis.recommendations,
+      weakestAreas: weakestTopics,
+      strongestAreas: strongestTopics,
+      recommendations: recommendations,
       topicPerformance: performanceData,
-      detailedBreakdown: attemptAnalysis.topicBreakdown,
       difficultyProgression: updatedProgression // Include progression status
     };
   }
