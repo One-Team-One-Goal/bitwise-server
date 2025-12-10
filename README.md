@@ -1,149 +1,220 @@
-# 🔥 bitwise. **v2**
+# Bitwise Server
 
-<div align="center">
+[![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-**The Phoenix Rises**
+Backend API server for the Bitwise learning platform, built with NestJS and TypeScript.
 
-*Version 1 was just the beginning. Version 2 is our statement.*
+## Overview
 
----
+Bitwise Server is a RESTful API service that powers the Bitwise educational platform. It provides comprehensive functionality for managing user authentication, lessons, assessments, adaptive learning paths, and user progress tracking. The server leverages AI integration for intelligent content generation and personalized learning experiences.
 
-[![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?style=for-the-badge&logo=shadcnui&logoColor=white)](https://ui.shadcn.com/)
-[![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
+## Core Features
 
-</div>
+- **Authentication & Authorization** - Secure JWT-based authentication with Passport.js
+- **Lesson Management** - CRUD operations for lessons and topics with structured content
+- **Assessment System** - Dynamic assessment generation and evaluation
+- **Adaptive Learning** - AI-powered personalized learning path recommendations
+- **Progress Tracking** - Comprehensive user progress monitoring and analytics
+- **Calculator Tools** - Interactive binary/decimal conversion utilities
+- **Bookmark System** - User content bookmarking functionality
+- **AI Integration** - Integration with Google Gemini and Groq for content generation
 
-## 🎯 **The Mission**
+## Technology Stack
 
-When they said no to v1, we didn't retreat. We **evolved**.
+### Core Framework
+- **NestJS** - Progressive Node.js framework for building efficient and scalable server-side applications
+- **TypeScript** - Strongly typed programming language
+- **Fastify** - High-performance web framework
 
-bitwise v2 isn't just an iteration—it's a complete reimagining of what's possible. Built with cutting-edge technology and an uncompromising vision, this is our answer to those who underestimated our potential.
+### Database & ORM
+- **PostgreSQL** - Primary database
+- **Prisma** - Next-generation ORM for type-safe database access
+- **Supabase** - Backend-as-a-Service for database hosting and authentication
 
-## ⚡ **Tech Arsenal**
+### AI & Machine Learning
+- **Google Generative AI** - AI SDK for content generation
+- **Groq AI SDK** - AI model integration
+- **Vercel AI SDK** - AI utilities and helpers
 
-We've assembled the most powerful stack in modern web development:
+### Authentication & Security
+- **Passport.js** - Authentication middleware
+- **JWT** - JSON Web Token implementation
+- **Class Validator** - Validation decorators
+- **Class Transformer** - Object transformation utilities
 
-### Frontend Powerhouse
-- **⚛️ Next.js 14** - The React framework for production
-- **🎨 Tailwind CSS** - Utility-first CSS framework
-- **🧩 shadcn/ui** - Beautiful, accessible components
-- **📱 Responsive Design** - Mobile-first approach
+### Development Tools
+- **ESLint** - Code linting and quality assurance
+- **Prettier** - Code formatting
+- **Jest** - Testing framework
+- **SWC** - Fast TypeScript/JavaScript compiler
 
-### Backend Excellence  
-- **🚀 NestJS** - Progressive Node.js framework
-- **📝 TypeScript** - Type-safe development
-- **🔒 Authentication & Security** - Enterprise-grade protection
-- **📊 Database Integration** - Scalable data management
+## Prerequisites
 
-### Developer Experience
-- **🛠️ ESLint & Prettier** - Code quality enforcement
-- **🧪 Jest Testing** - Comprehensive test coverage
-- **📦 Yarn/NPM** - Package management
-- **🔄 Hot Reload** - Lightning-fast development
+Before running the server, ensure you have the following installed:
 
-## 🚀 **Quick Start**
+- **Node.js** (v18 or higher)
+- **npm** or **yarn**
+- **PostgreSQL** database
+- **Git**
 
-Get bitwise v2 running in minutes:
+## Getting Started
 
-```bash
-# Clone the revolution
-git clone https://github.com/yourorg/bitwise-v2.git
-cd bitwise-v2
-
-# Install dependencies
-yarn install
-
-# Fire up development
-yarn dev
-
-# Watch the magic happen at http://localhost:3000
-```
-
-## 🏗️ **Development**
-
-```bash
-# Development mode with hot reload
-yarn dev
-
-# Build for production
-yarn build
-
-# Start production server
-yarn start
-
-# Run tests
-yarn test
-
-# Test with coverage
-yarn test:coverage
-
-# Lint your code
-yarn lint
-
-# Format your code
-yarn format
-```
-
-## 🌟 **What Makes v2 Different**
-
-- **🎯 Purpose-Built** - Every line of code serves the mission
-- **🔥 Performance First** - Optimized for speed and efficiency  
-- **🎨 Design Excellence** - User experience that speaks volumes
-- **🛡️ Battle-Tested** - Robust architecture that won't break
-- **📈 Scalable** - Ready for whatever comes next
-
-## 🌐 **Deployment**
-
-Ready to show the world what we've built:
+### 1. Clone the Repository
 
 ```bash
-# Deploy to Vercel (Recommended for Next.js)
-vercel deploy
-
-# Or build for any platform
-yarn build
+git clone <repository-url>
+cd bitwise-server
 ```
 
-## 📚 **Documentation**
+### 2. Install Dependencies
 
-- [📖 Getting Started Guide](./docs/getting-started.md)
-- [🏗️ Architecture Overview](./docs/architecture.md)
-- [🎨 Design System](./docs/design-system.md)
-- [🔧 API Documentation](./docs/api.md)
-- [🚀 Deployment Guide](./docs/deployment.md)
+```bash
+npm install
+```
 
-## 🤝 **Contributing**
+### 3. Environment Configuration
 
-Want to be part of the journey? We welcome contributors who share our vision:
+Create a `.env` file in the root directory with the following variables:
+
+```env
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/bitwise"
+DIRECT_URL="postgresql://user:password@localhost:5432/bitwise"
+
+# Authentication
+JWT_SECRET="your-secret-key"
+
+# AI Services
+GOOGLE_AI_API_KEY="your-google-ai-key"
+GROQ_API_KEY="your-groq-api-key"
+
+# Supabase (optional)
+SUPABASE_URL="your-supabase-url"
+SUPABASE_KEY="your-supabase-key"
+```
+
+### 4. Database Setup
+
+Generate Prisma client and run migrations:
+
+```bash
+npm run prisma:generate
+npx prisma migrate dev
+```
+
+### 5. Seed Database (Optional)
+
+```bash
+npm run db:seed
+```
+
+### 6. Run the Development Server
+
+```bash
+npm run start:dev
+```
+
+The server will start at `http://localhost:3000` (or your configured port).
+
+## Available Scripts
+
+### Development
+
+```bash
+npm run start:dev          # Start development server with watch mode
+npm run start:debug        # Start development server in debug mode
+```
+
+### Production
+
+```bash
+npm run build              # Build the application
+npm run start              # Start production server
+npm run start:prod         # Start production server (alias)
+```
+
+### Database
+
+```bash
+npm run prisma:generate    # Generate Prisma client
+npm run db:seed           # Seed database with initial data
+```
+
+### Code Quality
+
+```bash
+npm run lint              # Lint and fix code
+npm run format            # Format code with Prettier
+```
+
+### Testing
+
+```bash
+npm run test              # Run unit tests
+npm run test:watch        # Run tests in watch mode
+npm run test:cov          # Run tests with coverage report
+npm run test:debug        # Run tests in debug mode
+npm run test:e2e          # Run end-to-end tests
+```
+
+## Project Structure
+
+```
+bitwise-server/
+├── prisma/
+│   ├── schema.prisma          # Database schema
+│   ├── prisma.module.ts       # Prisma module
+│   └── prisma.service.ts      # Prisma service
+├── src/
+│   ├── adaptive/              # Adaptive learning module
+│   ├── assessment/            # Assessment management
+│   ├── auth/                  # Authentication & authorization
+│   ├── bookmark/              # Bookmark functionality
+│   ├── calculator/            # Calculator tools
+│   ├── config/                # Configuration files
+│   ├── lessons/               # Lesson management
+│   ├── user/                  # User management
+│   ├── user-progress/         # Progress tracking
+│   ├── app.module.ts          # Root application module
+│   └── main.ts                # Application entry point
+├── test/                      # E2E tests
+├── .env                       # Environment variables
+├── nest-cli.json             # NestJS CLI configuration
+├── package.json              # Dependencies and scripts
+└── tsconfig.json             # TypeScript configuration
+```
+
+## API Documentation
+
+Once the server is running, API documentation is available at:
+
+```
+http://localhost:3000/api/docs
+```
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection string | Yes |
+| `DIRECT_URL` | Direct database connection string | Yes |
+| `JWT_SECRET` | Secret key for JWT token generation | Yes |
+| `GOOGLE_AI_API_KEY` | Google AI API key | Yes |
+| `GROQ_API_KEY` | Groq AI API key | Yes |
+| `SUPABASE_URL` | Supabase project URL | No |
+| `SUPABASE_KEY` | Supabase API key | No |
+
+## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'Add some feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
 5. Open a Pull Request
 
-## 📄 **License**
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 **Connect With Us**
-
-- **🌐 Website**: [bitwise.dev](https://bitwise.dev)
-- **📧 Email**: team@bitwise.dev
-- **🐦 Twitter**: [@bitwisedev](https://twitter.com/bitwisedev)
-- **💼 LinkedIn**: [Bitwise Development](https://linkedin.com/company/bitwise-dev)
-
----
-
-<div align="center">
-
-**Built with ❤️ and determination**
-
-*Version 1 was our foundation. Version 2 is our future.*
-
-**They doubted us once. They won't make that mistake again.**
-
-</div>
+This project is licensed under the UNLICENSED license.
