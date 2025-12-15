@@ -9,6 +9,7 @@ import { AssessmentModule } from './assessment/assessment.module';
 import { PrismaModule } from 'prisma/prisma.module';
 import { AdaptiveModule } from './adaptive/adaptive.module';
 import { UserProgressModule } from './user-progress/user-progress.module';
+import { ExamplesModule } from './examples/examples.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -27,6 +28,7 @@ import { AppService } from './app.service';
     PrismaModule,
     AdaptiveModule,
     UserProgressModule,
+    ExamplesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

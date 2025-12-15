@@ -9,10 +9,10 @@ datasource db {
 }
 
 model Lesson {
-  id                  Int                   @id @default(autoincrement())
+  id                  Int                 @id @default(autoincrement())
   title               String
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
   topics              Topic[]
   userLessons         UserLesson[]
   userLessonMasteries UserLessonMastery[]
@@ -33,16 +33,17 @@ model Topic {
 }
 
 model UserSkill {
-  id        Int      @id @default(autoincrement())
-  userId    String
-  topicId   Int
-  level     Float    @default(0.5)
-  mastery   Float    @default(0.5)
-  attempts  Int      @default(0)
-  correct   Int      @default(0)
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
-  topic     Topic    @relation(fields: [topicId], references: [id])
+  id                Int      @id @default(autoincrement())
+  userId            String
+  topicId           Int
+  level             Float    @default(0.5)
+  mastery           Float    @default(0.5)
+  attempts          Int      @default(0)
+  correct           Int      @default(0)
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  currentDifficulty String   @default("easy")
+  topic             Topic    @relation(fields: [topicId], references: [id])
 
   @@unique([userId, topicId])
 }
@@ -63,9 +64,9 @@ model UserLesson {
   id           Int       @id @default(autoincrement())
   userId       String
   lessonId     Int
-  status       String    @default("not-started") // "not-started" | "in-progress" | "completed"
-  progress     Float     @default(0.0) // 0.0 to 1.0 (percentage of topics viewed)
-  masteryScore Float?    // From adaptive assessment (0.0-1.0)
+  status       String    @default("not-started")
+  progress     Float     @default(0.0)
+  masteryScore Float?
   startedAt    DateTime?
   completedAt  DateTime?
   lastViewedAt DateTime  @updatedAt
@@ -80,9 +81,9 @@ model UserTopic {
   id            Int       @id @default(autoincrement())
   userId        String
   topicId       Int
-  status        String    @default("not-started") // "not-started" | "viewed" | "completed"
+  status        String    @default("not-started")
   viewCount     Int       @default(0)
-  timeSpent     Int       @default(0) // seconds
+  timeSpent     Int       @default(0)
   firstViewedAt DateTime?
   lastViewedAt  DateTime  @updatedAt
   completedAt   DateTime?
@@ -97,7 +98,7 @@ model UserLessonMastery {
   id               Int       @id @default(autoincrement())
   userId           String
   lessonId         Int
-  masteryScore     Float     @default(0.5) // 0.0-1.0, from adaptive assessments
+  masteryScore     Float     @default(0.5)
   assessmentCount  Int       @default(0)
   lastAssessmentAt DateTime?
   updatedAt        DateTime  @updatedAt
@@ -106,4 +107,27 @@ model UserLessonMastery {
 
   @@unique([userId, lessonId])
   @@index([userId])
+}
+
+model BooleanExample {
+  id              String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  title           String
+  expression      String   @unique
+  description     String
+  learningFocus   String
+  difficulty      String
+  category        String
+  variableCount   Int
+  lawsUsed        String[]
+  tags            String[]
+  actualVariables String[]
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  @@index([difficulty])
+  @@index([category])
+  @@index([variableCount])
+  @@index([isActive])
 }
