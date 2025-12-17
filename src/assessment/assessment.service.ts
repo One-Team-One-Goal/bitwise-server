@@ -930,7 +930,7 @@ private async calculateDifficultyProgression(userId: string): Promise<{
 
     // Weak threshold: ≤50% - return topic IDs
     const weakestTopics = Object.entries(topicPerformance)
-      .filter(([_, perf]) => perf.total > 0 && (perf.correct / perf.total) * 100 <= 50)
+      .filter(([_, perf]) => perf.total > 0 && (perf.correct / perf.total) * 100 < 66)
       .sort((a, b) => {
         const percentA = (a[1].correct / a[1].total) * 100;
         const percentB = (b[1].correct / b[1].total) * 100;
@@ -950,7 +950,7 @@ private async calculateDifficultyProgression(userId: string): Promise<{
     } else {
       // Include topics with 75%-100% performance
       strongestTopics = Object.entries(topicPerformance)
-        .filter(([_, perf]) => perf.total > 0 && (perf.correct / perf.total) * 100 >= 75)
+        .filter(([_, perf]) => perf.total > 0 && (perf.correct / perf.total) * 100 >= 66)
         .sort((a, b) => {
           const percentA = (a[1].correct / a[1].total) * 100;
           const percentB = (b[1].correct / b[1].total) * 100;
